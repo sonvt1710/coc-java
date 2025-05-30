@@ -1,11 +1,11 @@
 'use strict'
 
-import { CancellationToken, CodeActionKind, commands, ConfigurationTarget, DiagnosticItem, diagnosticManager, DiagnosticSeverity, DocumentSelector, Emitter, ExtensionContext, extensions, LanguageClient, LanguageClientOptions, languages, Location, nvim, Position, Range, services, StreamInfo, TextDocumentPositionParams, TextEditor, Uri, window, workspace } from "coc.nvim"
+import { CancellationToken, CodeActionKind, commands, ConfigurationTarget, DiagnosticItem, diagnosticManager, DiagnosticSeverity, DocumentSelector, Emitter, ExtensionContext, extensions, FeatureState, LanguageClient, LanguageClientOptions, languages, Location, nvim, Position, Range, services, StaticFeature, StreamInfo, TextDocumentPositionParams, TextEditor, Uri, window, workspace } from "coc.nvim"
 import * as fse from 'fs-extra'
 import { findRuntimes } from "jdk-utils"
 import * as net from 'net'
 import * as path from 'path'
-import { ConfigurationParams, ConfigurationRequest, MessageType } from "vscode-languageserver-protocol"
+import { ClientCapabilities, ConfigurationParams, ConfigurationRequest, MessageType } from "vscode-languageserver-protocol"
 import { apiManager } from "./apiManager"
 import * as buildPath from './buildpath'
 import { javaRefactorKinds, RefactorDocumentProvider } from "./codeActionProvider"
@@ -295,6 +295,7 @@ export class StandardLanguageClient {
       // })
     })
 
+    this.languageClient.registerFeature(new DisableWillRenameFeature())
     this.registerCommandsForStandardServer(context, jdtEventEmitter)
     fileEventHandler.registerFileEventHandlers(this.languageClient, context)
 
@@ -794,4 +795,22 @@ function formatDate(date: Date): string {
 
 export function showNoLocationFound(message: string): void {
   window.showWarningMessage(message)
+}
+
+/**
+ * 'workspace/willRenameFiles' already handled so we need to disable it.
+ * @see fileEventHandler.registerFileEventHandlers
+ */
+export class DisableWillRenameFeature implements StaticFeature {
+  fillClientCapabilities(capabilities: ClientCapabilities): void {
+    capabilities.workspace.fileOperations.willRename = false;
+  }
+  getState(): FeatureState {
+    return null;
+  }
+  clear(): void {}
+  dispose(): void {}
+  fillInitializeParams?: () => void;
+  preInitialize?: () => void;
+  initialize(): void {}
 }
