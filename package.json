@@ -1088,6 +1088,12 @@
           "type": "boolean",
           "markdownDescription": "Specify whether to replace all the occurrences of the subtype with the new extracted interface.",
           "default": true
+        },
+        "java.completion.collapseCompletionItems": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable/disable the collapse of overloaded methods in completion items. Overrides `#java.completion.guessMethodArguments#`.",
+          "scope": "window"
         }
       }
     },

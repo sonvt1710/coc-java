@@ -240,6 +240,7 @@ The following coc.nvim settings are supported (checkout `:h coc-configuration` f
 - `java.sharedIndexes.location`: Specifies a common index location for all workspaces. See default values as follows: Windows: First use `"$APPDATA\\.jdt\\index"`, or `"~\\.jdt\\index"` if it does not exist macOS: `"~/Library/Caches/.jdt/index"` Linux: First use `"$XDG_CACHE_HOME/.jdt/index"`, or `"~/.cache/.jdt/index"` if it does not exist Default: `""`
 * `java.cleanup.actions`: The list of clean ups to be run on the current document when it's saved or when the cleanup command is issued. Clean ups can automatically fix code style or programming mistakes. [Click here](document/_java.learnMoreAboutCleanUps.md#java-clean-ups) to learn more about what each clean up does.
 * `java.saveActions.cleanup`: Enable/disable cleanup actions on save.
+* `java.completion.collapseCompletionItems`: Enable/disable the collapse of overloaded methods in completion items. Overrides `java.completion.guessMethodArguments`.
 
 Settings added by coc-java:
 
