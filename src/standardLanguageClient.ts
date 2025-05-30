@@ -87,6 +87,7 @@ export class StandardLanguageClient {
       if (!lsPort) {
         serverOptions = prepareExecutable(requirements, workspacePath, getJavaConfig(requirements.java_home), context, false)
       } else {
+        createLogger().info(`Conntect to remote jdtls from env JDTLS_CLIENT_PORT: ${lsPort}`)
         serverOptions = () => {
           const socket = net.connect(lsPort)
           const result: StreamInfo = {
@@ -97,6 +98,7 @@ export class StandardLanguageClient {
         }
       }
     } else {
+      createLogger().info(`Create server at port from env JDTLS_SERVER_PORT: ${port}`)
       // used during development
       serverOptions = awaitServerConnection.bind(null, port)
     }

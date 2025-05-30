@@ -231,7 +231,7 @@
           "type": "string",
           "default": null,
           "description": "Setting for GRADLE_USER_HOME.",
-          "scope": "window"
+          "scope": "machine-overridable"
         },
         "java.import.gradle.annotationProcessing.enabled": {
           "type": "boolean",
