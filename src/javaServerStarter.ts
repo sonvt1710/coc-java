@@ -48,6 +48,7 @@ export function prepareExecutable(requirements: RequirementsData, workspacePath,
   executable.options = options
   executable.command = path.resolve(`${requirements.tooling_jre}/bin/java`)
   executable.args = prepareParams(requirements, javaConfig, workspacePath, context, isSyntaxServer)
+
   createLogger().info(`Starting Java server with: ${executable.command} ${executable.args.join(' ')}`)
   return executable
 }
@@ -108,11 +109,28 @@ function prepareParams(requirements: RequirementsData, javaConfiguration, worksp
       '--add-opens',
       'jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED',
       '--add-opens',
-      'jdk.javadoc/jdk.javadoc.internal.doclets.formats.html.taglets.snippet=ALL-UNNAMED --add-opens jdk.javadoc/jdk.javadoc.internal.doclets.formats.html.taglets=ALL-UNNAMED',
+      'jdk.javadoc/jdk.javadoc.internal.doclets.formats.html.taglets.snippet=ALL-UNNAMED',
+      '--add-opens',
+      'jdk.javadoc/jdk.javadoc.internal.doclets.formats.html.taglets=ALL-UNNAMED',
+      '--add-opens',
+      'jdk.compiler/com.sun.tools.javac.platform=ALL-UNNAMED',
+      '--add-opens',
+      'jdk.compiler/com.sun.tools.javac.resources=ALL-UNNAMED',
+      '--add-opens',
+      'jdk.compiler/com.sun.tools.javac.jvm=ALL-UNNAMED',
+      '--add-opens',
+      'jdk.zipfs/jdk.nio.zipfs=ALL-UNNAMED',
+      '--add-opens',
+      'java.compiler/javax.tools=ALL-UNNAMED',
+      '--add-opens',
+      'java.base/java.nio.channels=ALL-UNNAMED',
+      '--add-opens',
+      'java.base/sun.nio.ch=ALL-UNNAMED',
       '-DICompilationUnitResolver=org.eclipse.jdt.core.dom.JavacCompilationUnitResolver',
       '-DCompilationUnit.DOM_BASED_OPERATIONS=true',
       '-DAbstractImageBuilder.compilerFactory=org.eclipse.jdt.internal.javac.JavacCompilerFactory'
     );
+
     if ('dom' === getJavaConfiguration().get('completion.engine')) {
       params.push('-DCompilationUnit.codeComplete.DOM_BASED_OPERATIONS=true');
     };
