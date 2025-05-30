@@ -707,6 +707,8 @@ async function openLogs() {
   await commands.executeCommand(Commands.OPEN_SERVER_LOG)
   await commands.executeCommand(Commands.OPEN_SERVER_STDOUT_LOG)
   await commands.executeCommand(Commands.OPEN_SERVER_STDERR_LOG)
+  const client = await getActiveLanguageClient()
+  client?.outputChannel.show(true)
 }
 
 function openLogFile(logFile: string, openingFailureWarning: string): Thenable<boolean> {
