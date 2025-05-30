@@ -239,6 +239,20 @@
           "description": "Enable/disable the annotation processing on Gradle projects and delegate Annotation Processing to JDT APT. Only works for Gradle 5.2 or higher.",
           "scope": "window"
         },
+        "java.import.projectSelection": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "automatic"
+          ],
+          "enumDescriptions": [
+            "Manually select the build configuration files.",
+            "Let extension automatically scan and select the build configuration files."
+          ],
+          "default": "automatic",
+          "markdownDescription": "[Experimental] Specifies how to select build configuration files to import. \nNote: Currently, `Gradle` projects cannot be partially imported.",
+          "scope": "window"
+        },
         "java.maven.downloadSources": {
           "type": "boolean",
           "default": false,

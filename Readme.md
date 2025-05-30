@@ -245,6 +245,7 @@ The following coc.nvim settings are supported (checkout `:h coc-configuration` f
   - `ask`: Ask to reload the sources of the open class files
   - `auto`: Automatically reload the sources of the open class files
   - `manual`: Manually reload the sources of the open class files
+* `java.import.projectSelection`: [Experimental] Specifies how to select build configuration files to import. \nNote: Currently, `Gradle` projects cannot be partially imported. Defaults to `automatic`.
 
 Settings added by coc-java:
 

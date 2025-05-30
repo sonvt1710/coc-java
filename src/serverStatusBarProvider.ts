@@ -62,6 +62,13 @@ class ServerStatusBarProvider implements Disposable {
     }
   }
 
+  public showNotImportedStatus(): void {
+    this.statusBarItem.name = "No projects are imported";
+    this.statusBarItem.text = `${StatusIcon.notImported} Java: No Projects Imported`;
+    this.statusBarItem.command = StatusCommands.startStandardServerCommand;
+    this.statusBarItem.tooltip = "No projects are imported, click to load projects";
+  }
+
   public showStandardStatus(): void {
     if (supportsLanguageStatus()) {
       ServerStatusItemFactory.showStandardStatus(this.languageStatusItem)
@@ -135,6 +142,7 @@ class ServerStatusBarProvider implements Disposable {
 
 export enum StatusIcon {
   lightWeight = "",
+  notImported = "!",
   busy = "Busy",
   ready = "OK",
   warning = "Warning",

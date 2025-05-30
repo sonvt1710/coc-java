@@ -1,11 +1,12 @@
 'use strict'
 
-import {commands, ConfigurationTarget, ExtensionContext, Uri, window, workspace, WorkspaceConfiguration, WorkspaceFolder} from 'coc.nvim'
+import { commands, ConfigurationTarget, ExtensionContext, Uri, window, workspace, WorkspaceConfiguration, WorkspaceFolder } from 'coc.nvim'
 import * as fs from 'fs'
 import * as path from 'path'
-import {Commands} from './commands'
-import {cleanupLombokCache} from './lombokSupport'
-import {ensureExists, getJavaConfiguration} from './utils'
+import { BuildFileSelector, IMPORT_METHOD, PICKED_BUILD_FILES } from './buildFilesSelector'
+import { Commands } from './commands'
+import { cleanupLombokCache } from './lombokSupport'
+import { ensureExists, getJavaConfiguration } from './utils'
 
 const DEFAULT_HIDDEN_FILES: string[] = ['**/.classpath', '**/.project', '**/.settings', '**/.factorypath']
 const IS_WORKSPACE_JDK_ALLOWED = "java.ls.isJdkAllowed"
@@ -14,7 +15,7 @@ export const IS_WORKSPACE_VMARGS_ALLOWED = "java.ls.isVmargsAllowed"
 export const ACTIVE_BUILD_TOOL_STATE = "java.activeBuildTool"
 
 export const cleanWorkspaceFileName = '.cleanWorkspace'
-const env = {appName: 'coc.nvim'}
+const env = { appName: 'coc.nvim' }
 
 const EXCLUDE_FILE_CONFIG = 'configuration.checkProjectSettingsExclusions'
 export const ORGANIZE_IMPORTS_ON_PASTE = 'actionsOnPaste.organizeImports' // java.actionsOnPaste.organizeImports
@@ -131,7 +132,7 @@ function hasJavaConfigChanged(oldConfig: WorkspaceConfiguration, newConfig: Work
     || hasConfigKeyChanged('transport', oldConfig, newConfig)
     || hasConfigKeyChanged('diagnostic.filter', oldConfig, newConfig)
     || hasConfigKeyChanged('jdt.ls.javac.enabled', oldConfig, newConfig)
-    || hasConfigKeyChanged('completion.engine', oldConfig, newConfig);
+    || hasConfigKeyChanged('completion.engine', oldConfig, newConfig)
 }
 
 function hasConfigKeyChanged(key, oldConfig, newConfig) {
@@ -151,7 +152,7 @@ export function getJavaEncoding(): string {
   return javaEncoding
 }
 
-export async function checkJavaPreferences(context: ExtensionContext): Promise<{javaHome?: string; preference: string}> {
+export async function checkJavaPreferences(context: ExtensionContext): Promise<{ javaHome?: string; preference: string }> {
   const allow = 'Allow'
   const disallow = 'Disallow'
   let preference: string = 'java.jdt.ls.java.home'
@@ -293,7 +294,7 @@ export function setGradleWrapperChecksum(wrapper: string, sha256?: string) {
       }
       const entry = property.filter(p => (p.sha256 === sha256))
       if (entry === null || entry.length === 0) {
-        property.push({sha256: sha256, allowed: allowed})
+        property.push({ sha256: sha256, allowed: allowed })
         workspace.getConfiguration().update(key, property, ConfigurationTarget.Global)
       }
       unregisterGradleWrapperPromptDialog(sha256)
@@ -305,4 +306,45 @@ function unregisterGradleWrapperPromptDialog(sha256: string) {
   if (index > -1) {
     gradleWrapperPromptDialogs.splice(index, 1)
   }
+}
+
+export async function getImportMode(context: ExtensionContext, selector: BuildFileSelector): Promise<ImportMode> {
+  const mode = getJavaConfiguration().get<string>("import.projectSelection")
+  if (mode === "manual") {
+    // use automatic mode if user has selected "Import All" before.
+    if (context.workspaceState.get(IMPORT_METHOD) === "Import All") {
+      return ImportMode.automatic
+    }
+
+    // if no selectable build files, use automatic mode
+    const hasBuildFiles = await selector.hasBuildFiles()
+    if (!hasBuildFiles) {
+      return ImportMode.automatic
+    }
+
+    // If the the manually picked build files has already cached, return manual mode.
+    if (context.workspaceState.get(PICKED_BUILD_FILES) !== undefined) {
+      return ImportMode.manual
+    }
+
+    const answer: string = await window.showInformationMessage(
+      "Java build files are detected in the workspace. How do you want to import them?",
+      "Import All", "Let Me Select...")
+    if (answer === "Import All") {
+      context.workspaceState.update(IMPORT_METHOD, "Import All")
+      return ImportMode.automatic
+    } else if (answer === "Let Me Select...") {
+      return ImportMode.manual
+    }
+
+    return ImportMode.skip
+  }
+
+  return ImportMode.automatic
+}
+
+export enum ImportMode {
+  automatic = 'automatic',
+  manual = 'manual',
+  skip = 'skip',
 }

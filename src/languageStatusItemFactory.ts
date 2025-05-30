@@ -38,6 +38,13 @@ export namespace StatusCommands {
     arguments: ["java.configuration.runtimes"],
     tooltip: "Configure Java Runtime"
   }
+
+  export const startStandardServerCommand = {
+    title: "Select Projects...",
+    command: Commands.SWITCH_SERVER_MODE,
+    arguments: ['Standard', true],
+    tooltip: "Select Projects..."
+  };
 }
 
 export namespace ServerStatusItemFactory {

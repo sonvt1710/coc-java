@@ -96,7 +96,7 @@ export function convertToGlob(filePatterns: string[], basePatterns?: string[]): 
   return parseToStringGlob(patterns)
 }
 
-export function getExclusionBlob(): string {
+export function getExclusionGlob(additionalExclusions?: string[]): string {
   const config = getJavaConfiguration()
   const exclusions: string[] = config.get<string[]>('import.exclusions', [])
   const patterns: string[] = []
@@ -107,6 +107,9 @@ export function getExclusionBlob(): string {
 
     patterns.push(exclusion)
   }
+  if (additionalExclusions) {
+    patterns.push(...additionalExclusions)
+  }
   return parseToStringGlob(patterns)
 }
 
@@ -116,6 +119,27 @@ function parseToStringGlob(patterns: string[]): string {
   }
 
   return `{${patterns.join(',')}}`
+}
+
+/**
+ * Get all projects from Java Language Server.
+ * @param excludeDefaultProject whether the default project should be excluded from the list, defaults to true.
+ * @returns string array for the project uris.
+ */
+export async function getAllProjects(excludeDefaultProject: boolean = true): Promise<string[]> {
+  const projectUris: string[] = await commands.executeCommand<string[]>(Commands.EXECUTE_WORKSPACE_COMMAND, Commands.GET_ALL_JAVA_PROJECTS,
+    JSON.stringify({ includeNonJava: true }))
+  return filterDefaultProject(projectUris, excludeDefaultProject)
+}
+
+function filterDefaultProject(projectUris: string[], excludeDefaultProject: boolean): string[] {
+  if (excludeDefaultProject) {
+    return projectUris.filter((uriString) => {
+      const projectPath = Uri.parse(uriString).fsPath
+      return path.basename(projectPath) !== "jdt.ls-java-project"
+    })
+  }
+  return projectUris
 }
 
 /**
@@ -168,7 +192,7 @@ export async function getBuildFilesInWorkspace(): Promise<Uri[]> {
   }
 
   const inclusionBlob: string = convertToGlob(inclusionFilePatterns)
-  const exclusionBlob: string = getExclusionBlob()
+  const exclusionBlob: string = getExclusionGlob()
   if (inclusionBlob) {
     buildFiles.push(...(await workspace.findFiles(inclusionBlob, exclusionBlob)))
   }

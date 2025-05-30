@@ -10,6 +10,7 @@ import * as path from 'path'
 import * as semver from 'semver'
 import { CodeActionParams, CodeActionRequest, DidChangeConfigurationNotification, ExecuteCommandParams, ExecuteCommandRequest } from 'vscode-languageserver-protocol'
 import { apiManager } from './apiManager'
+import { BuildFileSelector, cleanupWorkspaceState, PICKED_BUILD_FILES } from './buildFilesSelector'
 import { ClientErrorHandler } from './clientErrorHandler'
 import { Commands } from './commands'
 import { ClientStatus, ExtensionAPI } from './extension.api'
@@ -25,10 +26,10 @@ import { initialize as initializeRecommendation } from './recommendation'
 import * as requirements from './requirements'
 import { runtimeStatusBarProvider } from './runtimeStatusBarProvider'
 import { serverStatusBarProvider } from './serverStatusBarProvider'
-import { ACTIVE_BUILD_TOOL_STATE, cleanWorkspaceFileName, getJavaServerMode, onConfigurationChange, ServerMode } from './settings'
+import { ACTIVE_BUILD_TOOL_STATE, cleanWorkspaceFileName, getImportMode, getJavaServerMode, ImportMode, onConfigurationChange, ServerMode } from './settings'
 import { StandardLanguageClient } from './standardLanguageClient'
 import { SyntaxLanguageClient } from './syntaxLanguageClient'
-import { addAutoDetectedJdks, convertToGlob, deleteDirectory, ensureExists, getBuildFilePatterns, getExclusionBlob, getInclusionPatternsFromNegatedExclusion, getJavaConfig, getJavaConfiguration, hasBuildToolConflicts, rangeIntersect, resolveActualCause } from './utils'
+import { addAutoDetectedJdks, convertToGlob, deleteDirectory, ensureExists, getBuildFilePatterns, getExclusionGlob, getInclusionPatternsFromNegatedExclusion, getJavaConfig, getJavaConfiguration, hasBuildToolConflicts, rangeIntersect, resolveActualCause } from './utils'
 import glob = require('glob')
 
 const syntaxClient: SyntaxLanguageClient = new SyntaxLanguageClient()
@@ -91,7 +92,7 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
 
   storagePath = context.storagePath
   if (!storagePath) {
-    storagePath = getTempWorkspace();
+    storagePath = getTempWorkspace()
   }
   context.subscriptions.push(commands.registerCommand(Commands.MEATDATA_FILES_GENERATION, async () => {
     markdownPreviewProvider.show(context.asAbsolutePath(path.join('document', `_java.metadataFilesGeneration.md`)), 'Metadata Files Generation', "", context)
@@ -116,7 +117,7 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
   if (process.platform === 'darwin' && process.arch === 'x64') {
     try {
       if (semver.lt(os.release(), '20.0.0')) {
-        removeEquinoxFragmentOnDarwinX64(context);
+        removeEquinoxFragmentOnDarwinX64(context)
       }
     } catch (error) {
       // do nothing
@@ -258,12 +259,12 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
                   message: error && error.toString(),
                   data: resolveActualCause(error?.data),
                 },
-              });
+              })
             }
-            initFailureReported = true;
-            return false;
+            initFailureReported = true
+            return false
           } else {
-            return true;
+            return true
           }
           return true
         },
@@ -322,6 +323,7 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
       if (cleanWorkspaceExists) {
         try {
           cleanupLombokCache(context)
+          cleanupWorkspaceState(context)
           deleteDirectory(workspacePath)
           deleteDirectory(syntaxServerWorkspacePath)
         } catch (error) {
@@ -398,7 +400,7 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
         }
 
         if (choice === "Yes") {
-          await startStandardServer(context, requirements, clientOptions, workspacePath)
+          await startStandardServer(context, requirements, clientOptions, workspacePath, true)
         }
       }, null, true)
 
@@ -439,14 +441,33 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
   })
 }
 
-async function startStandardServer(context: ExtensionContext, requirements: requirements.RequirementsData, clientOptions: LanguageClientOptions, workspacePath: string) {
+async function startStandardServer(context: ExtensionContext, requirements: requirements.RequirementsData, clientOptions: LanguageClientOptions, workspacePath: string, triggeredByCommand: boolean = false) {
   if (standardClient.getClientStatus() !== ClientStatus.uninitialized) {
     return
   }
 
-  const checkConflicts: boolean = await ensureNoBuildToolConflicts(context, clientOptions)
-  if (!checkConflicts) {
-    return
+  const selector: BuildFileSelector = new BuildFileSelector(context, [])
+  const importMode: ImportMode = await getImportMode(context, selector)
+  if (importMode === ImportMode.automatic) {
+    if (!await ensureNoBuildToolConflicts(context, clientOptions)) {
+      return
+    }
+  } else {
+    const buildFiles: string[] = []
+    if (importMode === ImportMode.manual) {
+      const cache = context.workspaceState.get<string[]>(PICKED_BUILD_FILES)
+      if (cache === undefined || cache.length === 0 && triggeredByCommand) {
+        buildFiles.push(...await selector.selectBuildFiles() || [])
+      } else {
+        buildFiles.push(...cache)
+      }
+    }
+    if (buildFiles.length === 0) {
+      commands.executeCommand('setContext', 'java:serverMode', ServerMode.lightWeight)
+      serverStatusBarProvider.showNotImportedStatus()
+      return
+    }
+    clientOptions.initializationOptions.projectConfigurations = buildFiles
   }
 
   if (apiManager.getApiInstance().serverMode === ServerMode.lightWeight) {
@@ -471,7 +492,7 @@ async function workspaceContainsBuildFiles(): Promise<boolean> {
 
   // Nothing found in negated exclusion pattern, do a normal search then.
   const inclusionBlob: string = convertToGlob(inclusionPatterns)
-  const exclusionBlob: string = getExclusionBlob()
+  const exclusionBlob: string = getExclusionGlob()
   if (inclusionBlob && (await workspace.findFiles(inclusionBlob, exclusionBlob, 1 /* maxResults */)).length > 0) {
     return true
   }
@@ -606,7 +627,7 @@ function enableJavadocSymbols() {
   //       action: {indentAction: IndentAction.None, appendText: '/// '}
   //     }
   //   ]
-  // });
+  // })
 }
 
 function getTempWorkspace() {

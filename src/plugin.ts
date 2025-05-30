@@ -101,3 +101,30 @@ export function isContributedPartUpdated(oldContributedPart: Array<string>, newC
   }
   return hasChanged
 }
+
+export function getContributedBuildTools(): IBuildTool[] {
+  const buildTypes: IBuildTool[] = [];
+  for (const extension of extensions.all) {
+    const javaBuildTools: IBuildTool[] = extension.packageJSON.contributes?.javaBuildTools;
+    if (!Array.isArray(javaBuildTools)) {
+      continue;
+    }
+
+    for (const buildType of javaBuildTools) {
+      if (!isValidBuildTypeConfiguration(buildType)) {
+        continue;
+      }
+      buildTypes.push(buildType);
+    }
+  }
+  return buildTypes;
+}
+
+function isValidBuildTypeConfiguration(buildType: IBuildTool): boolean {
+  return !!buildType.displayName && !!buildType.buildFileNames;
+}
+
+export interface IBuildTool {
+  displayName: string;
+  buildFileNames: string[];
+}
