@@ -3,7 +3,7 @@
 import { commands, Emitter, Uri } from 'coc.nvim'
 import { Commands } from './commands'
 import { GetDocumentSymbolsCommand, getDocumentSymbolsProvider } from './documentSymbols'
-import { ClasspathQueryOptions, ClasspathResult, ClientStatus, ExtensionAPI, extensionApiVersion } from './extension.api'
+import { ClasspathQueryOptions, ClasspathResult, ClientStatus, ExtensionAPI, extensionApiVersion, SourceInvalidatedEvent } from './extension.api'
 import { GoToDefinitionCommand, goToDefinitionProvider } from './goToDefinition'
 import { registerHoverCommand } from './hoverAction'
 import { RequirementsData } from './requirements'
@@ -17,6 +17,7 @@ class ApiManager {
   private onDidProjectsImportEmitter: Emitter<Uri[]> = new Emitter<Uri[]>();
   private onDidProjectsDeleteEmitter: Emitter<Uri[]> = new Emitter<Uri[]>();
   private traceEventEmitter: Emitter<any> = new Emitter<any>()
+  private sourceInvalidatedEventEmitter: Emitter<SourceInvalidatedEvent> = new Emitter<SourceInvalidatedEvent>();
   private serverReadyPromiseResolve: (result: boolean) => void
 
   public initialize(requirements: RequirementsData, serverMode: ServerMode): void {
@@ -64,7 +65,8 @@ class ApiManager {
       onDidProjectsImport,
       onDidProjectsDelete,
       serverReady,
-      trackEvent: traceEvent
+      trackEvent: traceEvent,
+      onDidSourceInvalidate: this.sourceInvalidatedEventEmitter.event,
     }
   }
 
@@ -90,6 +92,10 @@ class ApiManager {
 
   public fireDidProjectsDelete(event: Uri[]): void {
     this.onDidProjectsDeleteEmitter.fire(event)
+  }
+
+  public fireSourceInvalidatedEvent(event: SourceInvalidatedEvent): void {
+    this.sourceInvalidatedEventEmitter.fire(event);
   }
 
   public fireTraceEvent(event: any): void {

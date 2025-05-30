@@ -241,6 +241,10 @@ The following coc.nvim settings are supported (checkout `:h coc-configuration` f
 * `java.cleanup.actions`: The list of clean ups to be run on the current document when it's saved or when the cleanup command is issued. Clean ups can automatically fix code style or programming mistakes. [Click here](document/_java.learnMoreAboutCleanUps.md#java-clean-ups) to learn more about what each clean up does.
 * `java.saveActions.cleanup`: Enable/disable cleanup actions on save.
 * `java.completion.collapseCompletionItems`: Enable/disable the collapse of overloaded methods in completion items. Overrides `java.completion.guessMethodArguments`.
+* `java.editor.reloadChangedSources`: Specifies whether to reload the sources of the open class files when their source jar files are changed. Defaults to `ask`.
+  - `ask`: Ask to reload the sources of the open class files
+  - `auto`: Automatically reload the sources of the open class files
+  - `manual`: Manually reload the sources of the open class files
 
 Settings added by coc-java:
 

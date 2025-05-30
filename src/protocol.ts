@@ -60,6 +60,7 @@ export enum EventType {
   projectsDeleted = 210,
   incompatibleGradleJdkIssue = 300,
   upgradeGradleWrapper = 400,
+  sourceInvalidated = 500,
 }
 
 export enum BuildWorkspaceStatus {
@@ -481,4 +482,13 @@ export interface CheckExtractInterfaceStatusResponse {
 
 export namespace CheckExtractInterfaceStatusRequest {
   export const type = new RequestType<CodeActionParams, CheckExtractInterfaceStatusResponse, void>('java/checkExtractInterfaceStatus')
+}
+
+export interface SourceInvalidatedEvent {
+  /**
+   * The package fragment roots that get new source attachments.
+   * The key is its root path, the value means if its source is
+   * automatically downloaded.
+   */
+  affectedRootPaths: { [key: string]: boolean };
 }
