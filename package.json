@@ -1027,7 +1027,10 @@
               "lambdaExpression",
               "switchExpression",
               "tryWithResource",
-              "renameFileToType"
+              "renameFileToType",
+              "organizeImports",
+              "renameUnusedLocalVariables",
+              "useSwitchForInstanceofPattern"
             ],
             "type": "string"
           },

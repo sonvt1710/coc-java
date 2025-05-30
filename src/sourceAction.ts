@@ -3,7 +3,7 @@
 import { commands, Disposable, ExtensionContext, LanguageClient, TextDocumentIdentifier, Uri, window, workspace } from 'coc.nvim'
 import { CodeActionParams } from 'vscode-languageserver-protocol'
 import { Commands } from './commands'
-import { AccessorCodeActionParams, AccessorCodeActionRequest, AccessorKind, AddOverridableMethodsRequest, CheckConstructorStatusRequest, CheckDelegateMethodsStatusRequest, CheckHashCodeEqualsStatusRequest, CheckToStringStatusRequest, GenerateAccessorsRequest, GenerateConstructorsRequest, GenerateDelegateMethodsRequest, GenerateHashCodeEqualsRequest, GenerateToStringRequest, ImportCandidate, ImportSelection, ListOverridableMethodsRequest, CleanupRequest, OrganizeImportsRequest, VariableBinding } from './protocol'
+import { AccessorCodeActionParams, AccessorCodeActionRequest, AccessorKind, AddOverridableMethodsRequest, CheckConstructorStatusRequest, CheckDelegateMethodsStatusRequest, CheckHashCodeEqualsStatusRequest, CheckToStringStatusRequest, CleanupRequest, GenerateAccessorsRequest, GenerateConstructorsRequest, GenerateDelegateMethodsRequest, GenerateHashCodeEqualsRequest, GenerateToStringRequest, ImportCandidate, ImportSelection, ListOverridableMethodsRequest, OrganizeImportsRequest, VariableBinding } from './protocol'
 
 export function registerCommands(languageClient: LanguageClient, context: ExtensionContext) {
   registerOverrideMethodsCommand(languageClient, context)

@@ -118,6 +118,7 @@ The following commands are available:
 | List All Java Source Paths           | java.project.listSourcePaths.command        | lists all the Java source paths recognized by the Java Language Server workspace.                                                                  |
 | Show Build Job Status                | java.show.server.task.status                | shows the Java Language Server job status in Visual Studio Code terminal.                                                                          |
 | Go to Super Implementation           | java.action.navigateToSuperImplementation   | goes to the super implementation for the current selected symbol in editor.                                                                        |
+| Manually apply cleanup actions       | java.action.doCleanup                       | Performs cleanup actions. |
 
 ## Supported settings
 
@@ -233,10 +234,12 @@ The following coc.nvim settings are supported (checkout `:h coc-configuration` f
 - `java.compile.nullAnalysis.nullable`: Specify the Nullable annotation types to be used for null analysis. If more than one annotation is specified, then the topmost annotation will be used first if it exists in project dependencies. This setting will be ignored if `java.compile.nullAnalysis.mode` is set to `disabled` Default: `["javax.annotation.Nullable","org.eclipse.jdt.annotation.Nullable","org.springframework.lang.Nullable"]`
 - `java.compile.nullAnalysis.mode`: Specify how to enable the annotation-based null analysis. Default: `"interactive"`
   Valid options: ["disabled","interactive","automatic"]
-- `java.cleanup.actionsOnSave`: The list of clean ups to be run on the current document when it's saved. Clean ups can automatically fix code style or programming mistakes. Click [HERE](command:_java.learnMoreAboutCleanUps) to learn more about what each clean up does. Default: `[]`
+- `java.cleanup.actionsOnSave`:  **Deprecated, please use 'java.cleanup.actions' instead.** The list of clean ups to be run on the current document when it's saved. Clean ups can automatically fix code style or programming mistakes. Click [HERE](command:_java.learnMoreAboutCleanUps) to learn more about what each clean up does. Default: `[]`
 - `java.sharedIndexes.enabled`: [Experimental] Specify whether to share indexes between different workspaces. When set to `auto`, shared indexes will be enabled in Visual Studio Code - Insiders. Default: `"auto"`
   Valid options: ["auto","on","off"]
 - `java.sharedIndexes.location`: Specifies a common index location for all workspaces. See default values as follows: Windows: First use `"$APPDATA\\.jdt\\index"`, or `"~\\.jdt\\index"` if it does not exist macOS: `"~/Library/Caches/.jdt/index"` Linux: First use `"$XDG_CACHE_HOME/.jdt/index"`, or `"~/.cache/.jdt/index"` if it does not exist Default: `""`
+* `java.cleanup.actions`: The list of clean ups to be run on the current document when it's saved or when the cleanup command is issued. Clean ups can automatically fix code style or programming mistakes. [Click here](document/_java.learnMoreAboutCleanUps.md#java-clean-ups) to learn more about what each clean up does.
+* `java.saveActions.cleanup`: Enable/disable cleanup actions on save.
 
 Settings added by coc-java:
 
