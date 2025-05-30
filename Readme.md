@@ -58,8 +58,8 @@ If you need to compile your projects against a different JDK version, it's recom
     "path": "/path/to/jdk-11",
   },
   {
-    "name": "JavaSE-21",
-    "path": "/path/to/jdk-21",
+    "name": "JavaSE-23",
+    "path": "/path/to/jdk-23",
     "default": true
   },
 ]
@@ -69,7 +69,7 @@ The default runtime will be used when you open standalone Java files.
 
 ## Features
 
-- Supports code from Java 1.5 to Java 22
+- Supports code from Java 1.5 to Java 23
 - Maven pom.xml project support
 - Gradle project support (with experimental Android project import support)
 - Standalone Java files support
