@@ -10,7 +10,7 @@ import * as path from 'path'
 import { createLogger } from './log'
 import { addLombokParam, isLombokSupportEnabled } from './lombokSupport'
 import { RequirementsData } from './requirements'
-import { getJavaagentFlag, getJavaEncoding, getKey, isInWorkspaceFolder, IS_WORKSPACE_VMARGS_ALLOWED } from './settings'
+import { getJavaagentFlag, getJavaEncoding, getKey, IS_WORKSPACE_VMARGS_ALLOWED, isInWorkspaceFolder } from './settings'
 import { deleteDirectory, ensureExists, getJavaConfiguration, getTimestamp } from './utils'
 
 declare var v8debug

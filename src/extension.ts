@@ -1,7 +1,7 @@
 'use strict'
 
 import * as chokidar from 'chokidar'
-import { CancellationToken, CodeActionContext, CodeActionTriggerKind, commands, ConfigurationTarget, Diagnostic, Document, Emitter, events, ExtensionContext, extensions, LanguageClient, LanguageClientOptions, RelativePattern, RevealOutputChannelOn, Uri, window, workspace, WorkspaceConfiguration } from 'coc.nvim'
+import { CancellationToken, CodeActionContext, CodeActionTriggerKind, commands, ConfigurationTarget, Diagnostic, Document, Emitter, events, ExtensionContext, extensions, LanguageClient, LanguageClientOptions, Position, RelativePattern, RevealOutputChannelOn, Uri, window, workspace, WorkspaceConfiguration } from 'coc.nvim'
 import { createHash } from 'crypto'
 import * as fs from 'fs'
 import * as fse from 'fs-extra'
@@ -342,6 +342,16 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
       context.subscriptions.push(commands.registerCommand(Commands.OPEN_FILE, async (uri: string) => {
         const parsedUri = Uri.parse(uri)
         await workspace.jumpTo(parsedUri)
+        const doc = await workspace.document
+        // Reveal the document at the specified line, if possible (e.g. jumping to a specific javadoc method).
+        if (parsedUri.scheme === 'jdt' && parsedUri.fragment) {
+          const line = parseInt(parsedUri.fragment)
+          if (isNaN(line) || line < 1 || line > doc.lineCount) {
+            return
+          }
+          const l = doc.textDocument.lineAt(line - 1)
+          await window.moveTo(Position.create(line - 1, l.firstNonWhitespaceCharacterIndex))
+        }
       }, null, true))
 
       context.subscriptions.push(commands.registerCommand(Commands.CLEAN_WORKSPACE, (force?: boolean) => cleanWorkspace(workspacePath, force)))
