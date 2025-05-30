@@ -1,15 +1,15 @@
 'use strict'
 
-import {Command, commands, Uri, ExtensionContext, window, workspace} from 'coc.nvim'
+import { Command, commands, ExtensionContext, Uri, window, workspace } from 'coc.nvim'
 import * as fse from 'fs-extra'
 import * as glob from 'glob'
 import * as path from 'path'
 import * as semver from 'semver'
-import {apiManager} from './apiManager'
-import {Commands} from './commands'
-import {createLogger} from './log'
-import {runtimeStatusBarProvider} from './runtimeStatusBarProvider'
-import {getAllJavaProjects} from './utils'
+import { apiManager } from './apiManager'
+import { Commands } from './commands'
+import { createLogger } from './log'
+import { runtimeStatusBarProvider } from './runtimeStatusBarProvider'
+import { getAllJavaProjects } from './utils'
 
 export const JAVA_LOMBOK_PATH = "java.lombokPath"
 
@@ -44,7 +44,7 @@ export function cleanupLombokCache(context: ExtensionContext) {
 
 function getExtensionLombokPath(): string {
   const lombokHome = path.resolve(__dirname, '../server')
-  const lombokJar: Array<string> = glob.sync('lombok*.jar', {cwd: lombokHome})
+  const lombokJar: Array<string> = glob.sync('lombok*.jar', { cwd: lombokHome })
 
   if (lombokJar === undefined || lombokJar.length === 0) {
     window.showWarningMessage(`Lombok missing in extension path`)
@@ -149,7 +149,7 @@ export async function checkLombokDependency(context: ExtensionContext, projectUr
   let currentLombokClasspath: string = undefined
   const projectUris: string[] = projectUri ? [projectUri.toString()] : await getAllJavaProjects()
   for (const projectUri of projectUris) {
-    const classpathResult = await apiManager.getApiInstance().getClasspaths(projectUri, {scope: 'test'})
+    const classpathResult = await apiManager.getApiInstance().getClasspaths(projectUri, { scope: 'test' })
     for (const classpath of classpathResult.classpaths) {
       if (lombokJarRegex.test(classpath)) {
         currentLombokClasspath = classpath
@@ -221,7 +221,7 @@ export function registerLombokConfigureCommand(context: ExtensionContext) {
       }
     ]
     const selectLombokPathItem = await window.showQuickPick(lombokPathItems, {
-      placeholder: 'Select the Lombok version used in the Java extension'
+      placeHolder: 'Select the Lombok version used in the Java extension'
     })
     let shouldReload: boolean = false
     if (!selectLombokPathItem) {

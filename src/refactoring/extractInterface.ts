@@ -1,6 +1,6 @@
 'use strict'
 
-import { LanguageClient, window, Uri, workspace, QuickPickItem } from "coc.nvim"
+import { LanguageClient, QuickPickItem, Uri, window, workspace } from "coc.nvim"
 import { CheckExtractInterfaceStatusRequest, CheckExtractInterfaceStatusResponse, RefactorWorkspaceEdit } from "../protocol"
 
 enum Step {
@@ -35,7 +35,7 @@ export async function getExtractInterfaceArguments(languageClient: LanguageClien
         })
         const members = await window.showQuickPick(items, {
           title: "Extract Interface (1/3): Select members",
-          placeholder: "Please select members to declare in the interface: ",
+          placeHolder: "Please select members to declare in the interface: ",
           // ignoreFocusOut: true,
           matchOnDescription: true,
           canPickMany: true,

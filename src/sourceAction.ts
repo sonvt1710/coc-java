@@ -50,7 +50,7 @@ function registerOverrideMethodsCommand(languageClient: LanguageClient, context:
 
     const selectedItems = await window.showQuickPick(quickPickItems, {
       canPickMany: true,
-      placeholder: `Select methods to override or implement in ${result.type}`
+      placeHolder: `Select methods to override or implement in ${result.type}`
     })
     if (!selectedItems?.length) {
       return
@@ -101,7 +101,7 @@ function registerHashCodeEqualsCommand(languageClient: LanguageClient, context: 
     })
     const selectedFields = await window.showQuickPick(fieldItems, {
       canPickMany: true,
-      placeholder: 'Select the fields to include in the hashCode() and equals() methods.'
+      placeHolder: 'Select the fields to include in the hashCode() and equals() methods.'
     })
     if (!selectedFields?.length) {
       return
@@ -204,7 +204,7 @@ function registerGenerateToStringCommand(languageClient: LanguageClient, context
       })
       const selectedFields = await window.showQuickPick(fieldItems, {
         canPickMany: true,
-        placeholder: 'Select the fields to include in the toString() method.'
+        placeHolder: 'Select the fields to include in the toString() method.'
       })
       if (!selectedFields) {
         return
@@ -264,7 +264,7 @@ async function generateAccessors(languageClient: LanguageClient, params: Accesso
   }
   const selectedAccessors = await window.showQuickPick(accessorItems, {
     canPickMany: true,
-    placeholder: `Select the fields to generate ${accessorsKind}`
+    placeHolder: `Select the fields to generate ${accessorsKind}`
   })
   if (!selectedAccessors?.length) {
     return
@@ -296,7 +296,7 @@ function registerGenerateConstructorsCommand(languageClient: LanguageClient, con
       })
       const selectedConstructorItems = await window.showQuickPick(constructorItems, {
         canPickMany: true,
-        placeholder: 'Select super class constructor(s).',
+        placeHolder: 'Select super class constructor(s).',
       })
       if (!selectedConstructorItems?.length) {
         return
@@ -315,7 +315,7 @@ function registerGenerateConstructorsCommand(languageClient: LanguageClient, con
       })
       const selectedFieldItems = await window.showQuickPick(fieldItems, {
         canPickMany: true,
-        placeholder: 'Select fields to initialize by constructor(s).',
+        placeHolder: 'Select fields to initialize by constructor(s).',
       })
       if (!selectedFieldItems) {
         return
@@ -350,7 +350,7 @@ function registerGenerateDelegateMethodsCommand(languageClient: LanguageClient, 
         }
       })
       const selectedFieldItem = await window.showQuickPick(fieldItems, {
-        placeholder: 'Select target to generate delegates for.',
+        placeHolder: 'Select target to generate delegates for.',
       })
       if (!selectedFieldItem) {
         return
@@ -374,7 +374,7 @@ function registerGenerateDelegateMethodsCommand(languageClient: LanguageClient, 
 
     const selectedDelegateEntryItems = await window.showQuickPick(delegateEntryItems, {
       canPickMany: true,
-      placeholder: 'Select methods to generate delegates for.',
+      placeHolder: 'Select methods to generate delegates for.',
     })
     if (!selectedDelegateEntryItems?.length) {
       return

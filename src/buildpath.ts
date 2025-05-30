@@ -1,6 +1,6 @@
 'use strict'
 
-import { commands, workspace, ConfigurationTarget, ExtensionContext, Uri, window } from 'coc.nvim'
+import { commands, ConfigurationTarget, ExtensionContext, Uri, window, workspace } from 'coc.nvim'
 import { Commands } from './commands'
 import { getJavaConfiguration } from './utils'
 
@@ -67,7 +67,7 @@ export function registerCommands(context: ExtensionContext) {
             label: sourcePath.displayPath,
             detail: `$(file-directory) ${sourcePath.projectType} Project: ${sourcePath.projectName}`,
           }
-        }), { placeholder: 'All Java source directories recognized by the workspace.' })
+        }), { placeHolder: 'All Java source directories recognized by the workspace.' })
       }
     } else {
       window.showErrorMessage(result.message)

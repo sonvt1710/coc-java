@@ -109,7 +109,7 @@ export class BuildFileSelector {
 
   private async chooseBuildFilePickers(): Promise<IBuildFilePicker[]> {
     return window.showQuickPick(this.getBuildFilePickers(), {
-      placeholder: "Note: Currently only Maven projects can be partially imported.",
+      placeHolder: "Note: Currently only Maven projects can be partially imported.",
       title: "Select build files to import",
       canPickMany: true,
       matchOnDescription: true,

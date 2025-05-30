@@ -553,7 +553,7 @@ export class StandardLanguageClient {
       context.subscriptions.push(commands.registerCommand(Commands.COMPILE_WORKSPACE, (isFullCompile: boolean, token?: CancellationToken) => {
         return window.withProgress({ title: 'Compiling' }, async p => {
           if (typeof isFullCompile !== 'boolean') {
-            const selection = await window.showQuickPick(['Incremental', 'Full'], { placeholder: 'please choose compile type:' })
+            const selection = await window.showQuickPick(['Incremental', 'Full'], { placeHolder: 'please choose compile type:' })
             isFullCompile = selection !== 'Incremental'
           }
           p.report({ message: 'Compiling workspace...' })

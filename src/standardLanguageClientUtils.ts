@@ -98,7 +98,7 @@ export async function askForProjects(activeFileUri: Uri | undefined, placeHolder
 
   const choices = await window.showQuickPick(projectPicks, {
     matchOnDescription: true,
-    placeholder: placeHolder,
+    placeHolder,
     canPickMany: canPickMany,
   })
 

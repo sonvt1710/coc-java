@@ -154,7 +154,7 @@ async function resolveScopes(scopes: any[]): Promise<any | undefined> {
     initializeIn = scopes[0]
   } else if (scopes.length > 1) {
     initializeIn = await window.showQuickPick(scopes, {
-      placeholder: "Initialize the field in",
+      placeHolder: "Initialize the field in",
     })
 
     if (!initializeIn) {
@@ -202,7 +202,7 @@ async function getExpression(command: string, params: any, languageClient: Langu
         return undefined
     }
     resultItem = await window.showQuickPick<IExpressionItem>(options, {
-      placeholder: `Select an expression you want to ${commandMessage}`,
+      placeHolder: `Select an expression you want to ${commandMessage}`,
     })
   }
   if (!resultItem) {
@@ -250,10 +250,10 @@ async function moveFile(languageClient: LanguageClient, fileUris: Uri[]) {
     }
   })
 
-  const placeholder = (fileUris.length === 1) ? `Choose the target package for ${getFileNameFromUri(fileUris[0])}.`
+  const placeHolder = (fileUris.length === 1) ? `Choose the target package for ${getFileNameFromUri(fileUris[0])}.`
     : `Choose the target package for ${fileUris.length} selected files.`
   const selectPackageNodeItem = await window.showQuickPick(packageNodeItems, {
-    placeholder,
+    placeHolder,
   })
   if (!selectPackageNodeItem) {
     return
@@ -382,7 +382,7 @@ async function moveInstanceMethod(languageClient: LanguageClient, params: CodeAc
   })
   const methodName = commandInfo && commandInfo.displayName ? commandInfo.displayName : ''
   const selected = await window.showQuickPick(destinationNodeItems, {
-    placeholder: `Select the new class for the instance method ${methodName}.`,
+    placeHolder: `Select the new class for the instance method ${methodName}.`,
   })
   if (!selected) {
     return
@@ -422,7 +422,7 @@ async function moveStaticMember(languageClient: LanguageClient, params: CodeActi
   }
 }
 
-async function selectTargetClass(languageClient: LanguageClient, placeholder: string, projectName: string, exclude: Set<string>): Promise<SymbolInformation> {
+async function selectTargetClass(languageClient: LanguageClient, placeHolder: string, projectName: string, exclude: Set<string>): Promise<SymbolInformation> {
   const picked = await window.showQuickPick<any>(
     languageClient.sendRequest(SearchSymbols.type, {
       query: '*',
@@ -456,7 +456,7 @@ async function selectTargetClass(languageClient: LanguageClient, placeholder: st
         }]
       }
     }), {
-    placeholder
+    placeHolder
   })
 
   return picked ? picked.symbolNode : null
@@ -486,7 +486,7 @@ async function moveType(languageClient: LanguageClient, params: CodeActionParams
   }
 
   const picked = await window.showQuickPick(destinationPickItems, {
-    placeholder: 'What would you like to do?',
+    placeHolder: 'What would you like to do?',
   })
   if (!picked) {
     return

@@ -1,6 +1,5 @@
 'use strict'
 
-import * as chokidar from 'chokidar'
 import { CancellationToken, CodeActionContext, CodeActionTriggerKind, commands, ConfigurationTarget, Diagnostic, Document, Emitter, events, ExtensionContext, extensions, LanguageClient, LanguageClientOptions, Position, RelativePattern, RevealOutputChannelOn, Uri, window, workspace, WorkspaceConfiguration } from 'coc.nvim'
 import { createHash } from 'crypto'
 import * as fs from 'fs'
@@ -244,7 +243,7 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
               return values
             }, (error) => {
               return client.handleFailedRequest(CodeActionRequest.type as any, token, error, [])
-            })
+            }) as any
           }
         },
         revealOutputChannelOn: RevealOutputChannelOn.Never,
@@ -984,14 +983,16 @@ async function cleanJavaWorkspaceStorage() {
 
 function registerOutOfMemoryDetection(storagePath: string) {
   const heapDumpFolder = getHeapDumpFolderFromSettings() || storagePath
-  chokidar.watch(`${heapDumpFolder}/java_*.hprof`, { ignoreInitial: true }).on('add', path => {
+  let pattern = new RelativePattern(heapDumpFolder, "java_*.hprof")
+  let watcher = workspace.createFileSystemWatcher(pattern, false, true, true)
+  watcher.onDidCreate(e => {
     // Only clean heap dumps that are generated in the default location.
     // The default location is the extension global storage
     // This means that if users change the folder where the heap dumps are placed,
     // then they will be able to read the heap dumps,
     // since they aren't immediately deleted.
     if (heapDumpFolder === storagePath) {
-      fse.remove(path)
+      fs.unlinkSync(e.fsPath)
     }
     showOOMMessage()
   })

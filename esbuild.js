@@ -6,7 +6,7 @@ async function start() {
     minify: process.env.NODE_ENV === 'production',
     sourcemap: process.env.NODE_ENV === 'development',
     mainFields: ['module', 'main'],
-    external: ['coc.nvim', 'chokidar'],
+    external: ['coc.nvim'],
     platform: 'node',
     target: 'node14.14',
     outfile: 'lib/index.js'
