@@ -1,6 +1,6 @@
 'use strict'
 
-import { CancellationToken, CodeActionKind, commands, ConfigurationTarget, DocumentSelector, Emitter, ExtensionContext, extensions, LanguageClient, LanguageClientOptions, languages, Location, Position, Range, services, StreamInfo, TextDocumentPositionParams, TextEditor, Uri, window, nvim, workspace, diagnosticManager, DiagnosticSeverity, DiagnosticItem } from "coc.nvim"
+import { CancellationToken, CodeActionKind, commands, ConfigurationTarget, DiagnosticItem, diagnosticManager, DiagnosticSeverity, DocumentSelector, Emitter, ExtensionContext, extensions, LanguageClient, LanguageClientOptions, languages, Location, nvim, Position, Range, services, StreamInfo, TextDocumentPositionParams, TextEditor, Uri, window, workspace } from "coc.nvim"
 import * as fse from 'fs-extra'
 import { findRuntimes } from "jdk-utils"
 import * as net from 'net'
@@ -20,7 +20,7 @@ import { checkLombokDependency } from "./lombokSupport"
 import { markdownPreviewProvider } from "./markdownPreviewProvider"
 import { collectBuildFilePattern, onExtensionChange } from "./plugin"
 import { pomCodeActionMetadata, PomCodeActionProvider } from "./pom/pomCodeActionProvider"
-import { ActionableNotification, BuildProjectParams, BuildProjectRequest, CompileWorkspaceRequest, BuildWorkspaceStatus, EventNotification, EventType, ExecuteClientCommandRequest, FeatureStatus, FindLinks, GradleCompatibilityInfo, LinkLocation, ProgressReportNotification, ServerNotification, SourceAttachmentAttribute, SourceAttachmentRequest, SourceAttachmentResult, StatusNotification, UpgradeGradleWrapperInfo } from "./protocol"
+import { ActionableNotification, BuildProjectParams, BuildProjectRequest, BuildWorkspaceStatus, CompileWorkspaceRequest, EventNotification, EventType, ExecuteClientCommandRequest, FeatureStatus, FindLinks, GradleCompatibilityInfo, LinkLocation, ProgressReportNotification, ServerNotification, SourceAttachmentAttribute, SourceAttachmentRequest, SourceAttachmentResult, StatusNotification, UpgradeGradleWrapperInfo } from "./protocol"
 import * as refactorAction from './refactorAction'
 import { getJdkUrl, RequirementsData, sortJdksBySource, sortJdksByVersion } from "./requirements"
 import { serverStatus, ServerStatusKind } from "./serverStatus"
@@ -290,6 +290,9 @@ export class StandardLanguageClient {
         }
         return result
       })
+      // this.languageClient.onTelemetry(async (e: TelemetryEvent) => {
+      //   apiManager.fireTraceEvent(e);
+      // })
     })
 
     this.registerCommandsForStandardServer(context, jdtEventEmitter)

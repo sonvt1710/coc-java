@@ -1,7 +1,9 @@
-import { CloseAction, commands, ErrorAction, ErrorHandler, Message, window } from 'coc.nvim'
-import { Commands } from './commands'
-import { createLogger, ILogger } from './log'
+import { CloseAction, commands, ErrorAction, ErrorHandler, Message, window } from 'coc.nvim';
+import { apiManager } from './apiManager';
+import { Commands } from './commands';
+import { createLogger, ILogger } from './log';
 
+const CLIENT_ERROR = "java.client.error";
 export class ClientErrorHandler implements ErrorHandler {
   private restarts: number[]
   private logger: ILogger
@@ -17,7 +19,15 @@ export class ClientErrorHandler implements ErrorHandler {
       return ErrorAction.Continue
     }
 
-    this.logger.error(`${this.name} server encountered error and will shut down: ${_message}, ${_error && _error.toString()}`)
+    const errorMessage = `${this.name} server encountered error and will shut down: ${_message}, ${_error && _error.toString()}`
+    apiManager.fireTraceEvent({
+      name: CLIENT_ERROR,
+      properties: {
+        message: errorMessage,
+      },
+    });
+
+    this.logger.error(errorMessage)
     return ErrorAction.Shutdown
   }
 
@@ -30,6 +40,12 @@ export class ClientErrorHandler implements ErrorHandler {
       const diff = this.restarts[this.restarts.length - 1] - this.restarts[0]
       if (diff <= 3 * 60 * 1000) {
         const message = `The ${this.name} server crashed 5 times in the last 3 minutes. The server will not be restarted.`
+        apiManager.fireTraceEvent({
+          name: CLIENT_ERROR,
+          properties: {
+            message,
+          },
+        })
         this.logger.error(message)
         const action = "Show logs"
         window.showErrorMessage(message, action).then(selection => {

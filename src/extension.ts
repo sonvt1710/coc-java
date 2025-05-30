@@ -28,7 +28,7 @@ import { serverStatusBarProvider } from './serverStatusBarProvider'
 import { ACTIVE_BUILD_TOOL_STATE, cleanWorkspaceFileName, getJavaServerMode, onConfigurationChange, ServerMode } from './settings'
 import { StandardLanguageClient } from './standardLanguageClient'
 import { SyntaxLanguageClient } from './syntaxLanguageClient'
-import { addAutoDetectedJdks, convertToGlob, deleteDirectory, ensureExists, getBuildFilePatterns, getExclusionBlob, getInclusionPatternsFromNegatedExclusion, getJavaConfig, getJavaConfiguration, hasBuildToolConflicts, rangeIntersect } from './utils'
+import { addAutoDetectedJdks, convertToGlob, deleteDirectory, ensureExists, getBuildFilePatterns, getExclusionBlob, getInclusionPatternsFromNegatedExclusion, getJavaConfig, getJavaConfiguration, hasBuildToolConflicts, rangeIntersect, resolveActualCause } from './utils'
 import glob = require('glob')
 
 const syntaxClient: SyntaxLanguageClient = new SyntaxLanguageClient()
@@ -138,6 +138,7 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
       const id = createHash('md5').update(workspace.root).digest('hex')
       const workspacePath = path.resolve(`${storagePath}/jdt_ws_${id}`)
       const syntaxServerWorkspacePath = path.resolve(`${storagePath}/ss_ws`)
+      let initFailureReported: boolean = false
 
       let serverMode = getJavaServerMode()
       const isWorkspaceTrusted = (workspace as any).isTrusted // TODO: use workspace.isTrusted directly when other clients catch up to adopt 1.56.0
@@ -248,7 +249,22 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
         revealOutputChannelOn: RevealOutputChannelOn.Never,
         errorHandler: new ClientErrorHandler(extensionName),
         initializationFailedHandler: error => {
-          createLogger().error(`Failed to initialize ${extensionName} due to ${error && error.toString()}`)
+          createLogger().error(`Failed to initialize ${extensionName} due to ${error && error.toString()}`, resolveActualCause(error?.data))
+          if ((error.toString().includes('Connection') && error.toString().includes('disposed')) || error.toString().includes('Internal error')) {
+            if (!initFailureReported) {
+              apiManager.fireTraceEvent({
+                name: "java.client.error.initialization",
+                properties: {
+                  message: error && error.toString(),
+                  data: resolveActualCause(error?.data),
+                },
+              });
+            }
+            initFailureReported = true;
+            return false;
+          } else {
+            return true;
+          }
           return true
         },
         outputChannel: requireStandardServer ? new OutputInfoCollector('java') : undefined,

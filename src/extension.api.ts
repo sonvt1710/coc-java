@@ -1,7 +1,7 @@
+import { CancellationToken, Command, Event, ProviderResult, TextDocumentPositionParams, Uri } from 'coc.nvim'
 import { GetDocumentSymbolsCommand } from './documentSymbols'
 import { GoToDefinitionCommand } from './goToDefinition'
 import { RequirementsData } from './requirements'
-import { CancellationToken, Command, ProviderResult, Uri, Event, TextDocumentPositionParams } from 'coc.nvim'
 import { ServerMode } from './settings'
 
 export type ProvideHoverCommandFn = (params: TextDocumentPositionParams, token: CancellationToken) => ProviderResult<Command[] | undefined>
@@ -72,7 +72,7 @@ export enum ClientStatus {
   stopping = "Stopping",
 }
 
-export const extensionApiVersion = '0.8'
+export const extensionApiVersion = '0.9'
 
 export interface ExtensionAPI {
   readonly apiVersion: string
@@ -125,4 +125,11 @@ export interface ExtensionAPI {
    * @since extension version 1.7.0
    */
   readonly serverReady: () => Promise<boolean>
+  /**
+ * Allow 3rd party trace handler to track the language client & server error events.
+ *
+ * @since API version 0.9
+ * @since extension version 1.20.0
+ */
+  readonly trackEvent: Event<any>;
 }

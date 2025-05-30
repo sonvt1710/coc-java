@@ -2,10 +2,10 @@
 
 import { commands, Position, Range, Uri, workspace, WorkspaceConfiguration } from 'coc.nvim'
 import * as fs from 'fs'
+import { IJavaRuntime } from 'jdk-utils'
 import * as path from 'path'
 import { Commands } from './commands'
-import { IJavaRuntime } from 'jdk-utils'
-import { sortJdksByVersion, sortJdksBySource, getSupportedJreNames, listJdks } from './requirements'
+import { getSupportedJreNames, listJdks, sortJdksBySource, sortJdksByVersion } from './requirements'
 
 export function getJavaConfiguration(): WorkspaceConfiguration {
   return workspace.getConfiguration('java')
@@ -13,14 +13,16 @@ export function getJavaConfiguration(): WorkspaceConfiguration {
 
 export function isPreferenceOverridden(section: string): boolean {
   const config = workspace.getConfiguration()
-  return config.inspect(section).workspaceFolderValue !== undefined ||
+  return (
+    config.inspect(section).workspaceFolderValue !== undefined ||
     config.inspect(section).workspaceValue !== undefined ||
     config.inspect(section).globalValue !== undefined
+  )
 }
 
 export function deleteDirectory(dir) {
   if (fs.existsSync(dir)) {
-    fs.readdirSync(dir).forEach((child) => {
+    fs.readdirSync(dir).forEach(child => {
       const entry = path.join(dir, child)
       if (fs.lstatSync(entry).isDirectory()) {
         deleteDirectory(entry)
@@ -50,15 +52,15 @@ export function ensureExists(folder) {
 
 export function getBuildFilePatterns(): string[] {
   const config = getJavaConfiguration()
-  const isMavenImporterEnabled: boolean = config.get<boolean>("import.maven.enabled")
-  const isGradleImporterEnabled: boolean = config.get<boolean>("import.gradle.enabled")
+  const isMavenImporterEnabled: boolean = config.get<boolean>('import.maven.enabled')
+  const isGradleImporterEnabled: boolean = config.get<boolean>('import.gradle.enabled')
   const patterns: string[] = []
   if (isMavenImporterEnabled) {
-    patterns.push("**/pom.xml")
+    patterns.push('**/pom.xml')
   }
   if (isGradleImporterEnabled) {
-    patterns.push("**/*.gradle")
-    patterns.push("**/*.gradle.kts")
+    patterns.push('**/*.gradle')
+    patterns.push('**/*.gradle.kts')
   }
 
   return patterns
@@ -66,10 +68,10 @@ export function getBuildFilePatterns(): string[] {
 
 export function getInclusionPatternsFromNegatedExclusion(): string[] {
   const config = getJavaConfiguration()
-  const exclusions: string[] = config.get<string[]>("import.exclusions", [])
+  const exclusions: string[] = config.get<string[]>('import.exclusions', [])
   const patterns: string[] = []
   for (const exclusion of exclusions) {
-    if (exclusion.startsWith("!")) {
+    if (exclusion.startsWith('!')) {
       patterns.push(exclusion.substr(1))
     }
   }
@@ -78,7 +80,7 @@ export function getInclusionPatternsFromNegatedExclusion(): string[] {
 
 export function convertToGlob(filePatterns: string[], basePatterns?: string[]): string {
   if (!filePatterns || filePatterns.length === 0) {
-    return ""
+    return ''
   }
 
   if (!basePatterns || basePatterns.length === 0) {
@@ -88,7 +90,7 @@ export function convertToGlob(filePatterns: string[], basePatterns?: string[]): 
   const patterns: string[] = []
   for (const basePattern of basePatterns) {
     for (const filePattern of filePatterns) {
-      patterns.push(path.join(basePattern, `/${filePattern}`).replace(/\\/g, "/"))
+      patterns.push(path.join(basePattern, `/${filePattern}`).replace(/\\/g, '/'))
     }
   }
   return parseToStringGlob(patterns)
@@ -96,10 +98,10 @@ export function convertToGlob(filePatterns: string[], basePatterns?: string[]): 
 
 export function getExclusionBlob(): string {
   const config = getJavaConfiguration()
-  const exclusions: string[] = config.get<string[]>("import.exclusions", [])
+  const exclusions: string[] = config.get<string[]>('import.exclusions', [])
   const patterns: string[] = []
   for (const exclusion of exclusions) {
-    if (exclusion.startsWith("!")) {
+    if (exclusion.startsWith('!')) {
       continue
     }
 
@@ -110,10 +112,10 @@ export function getExclusionBlob(): string {
 
 function parseToStringGlob(patterns: string[]): string {
   if (!patterns || patterns.length === 0) {
-    return ""
+    return ''
   }
 
-  return `{${patterns.join(",")}}`
+  return `{${patterns.join(',')}}`
 }
 
 /**
@@ -122,11 +124,14 @@ function parseToStringGlob(patterns: string[]): string {
  * @returns string array for the project uris.
  */
 export async function getAllJavaProjects(excludeDefaultProject: boolean = true): Promise<string[]> {
-  let projectUris: string[] = await commands.executeCommand<string[]>(Commands.EXECUTE_WORKSPACE_COMMAND, Commands.GET_ALL_JAVA_PROJECTS)
+  let projectUris: string[] = await commands.executeCommand<string[]>(
+    Commands.EXECUTE_WORKSPACE_COMMAND,
+    Commands.GET_ALL_JAVA_PROJECTS
+  )
   if (excludeDefaultProject) {
-    projectUris = projectUris.filter((uriString) => {
+    projectUris = projectUris.filter(uriString => {
       const projectPath = Uri.parse(uriString).fsPath
-      return path.basename(projectPath) !== "jdt.ls-java-project"
+      return path.basename(projectPath) !== 'jdt.ls-java-project'
     })
   }
   return projectUris
@@ -134,14 +139,14 @@ export async function getAllJavaProjects(excludeDefaultProject: boolean = true):
 
 export async function hasBuildToolConflicts(): Promise<boolean> {
   const projectConfigurationUris: Uri[] = await getBuildFilesInWorkspace()
-  const projectConfigurationFsPaths: string[] = projectConfigurationUris.map((uri) => uri.fsPath)
-  const eclipseDirectories = getDirectoriesByBuildFile(projectConfigurationFsPaths, [], ".project")
+  const projectConfigurationFsPaths: string[] = projectConfigurationUris.map(uri => uri.fsPath)
+  const eclipseDirectories = getDirectoriesByBuildFile(projectConfigurationFsPaths, [], '.project')
   // ignore the folders that already has .project file (already imported before)
-  const gradleDirectories = getDirectoriesByBuildFile(projectConfigurationFsPaths, eclipseDirectories, ".gradle")
-  const gradleDirectoriesKts = getDirectoriesByBuildFile(projectConfigurationFsPaths, eclipseDirectories, ".gradle.kts")
+  const gradleDirectories = getDirectoriesByBuildFile(projectConfigurationFsPaths, eclipseDirectories, '.gradle')
+  const gradleDirectoriesKts = getDirectoriesByBuildFile(projectConfigurationFsPaths, eclipseDirectories, '.gradle.kts')
   gradleDirectories.concat(gradleDirectoriesKts)
-  const mavenDirectories = getDirectoriesByBuildFile(projectConfigurationFsPaths, eclipseDirectories, "pom.xml")
-  return gradleDirectories.some((gradleDir) => {
+  const mavenDirectories = getDirectoriesByBuildFile(projectConfigurationFsPaths, eclipseDirectories, 'pom.xml')
+  return gradleDirectories.some(gradleDir => {
     return mavenDirectories.includes(gradleDir)
   })
 }
@@ -149,31 +154,38 @@ export async function hasBuildToolConflicts(): Promise<boolean> {
 export async function getBuildFilesInWorkspace(): Promise<Uri[]> {
   const buildFiles: Uri[] = []
   const inclusionFilePatterns: string[] = getBuildFilePatterns()
-  inclusionFilePatterns.push("**/.project")
+  inclusionFilePatterns.push('**/.project')
   const inclusionFolderPatterns: string[] = getInclusionPatternsFromNegatedExclusion()
   // Since VS Code API does not support put negated exclusion pattern in findFiles(),
   // here we first parse the negated exclusion to inclusion and do the search.
   if (inclusionFilePatterns.length > 0 && inclusionFolderPatterns.length > 0) {
-    buildFiles.push(...await workspace.findFiles(convertToGlob(inclusionFilePatterns, inclusionFolderPatterns), null /* force not use default exclusion */))
+    buildFiles.push(
+      ...(await workspace.findFiles(
+        convertToGlob(inclusionFilePatterns, inclusionFolderPatterns),
+        null /* force not use default exclusion */
+      ))
+    )
   }
 
   const inclusionBlob: string = convertToGlob(inclusionFilePatterns)
   const exclusionBlob: string = getExclusionBlob()
   if (inclusionBlob) {
-    buildFiles.push(...await workspace.findFiles(inclusionBlob, exclusionBlob))
+    buildFiles.push(...(await workspace.findFiles(inclusionBlob, exclusionBlob)))
   }
 
   return buildFiles
 }
 
 function getDirectoriesByBuildFile(inclusions: string[], exclusions: string[], fileName: string): string[] {
-  return inclusions.filter((fsPath) => fsPath.endsWith(fileName)).map((fsPath) => {
-    return path.dirname(fsPath)
-  }).filter((inclusion) => {
-    return !exclusions.includes(inclusion)
-  })
+  return inclusions
+    .filter(fsPath => fsPath.endsWith(fileName))
+    .map(fsPath => {
+      return path.dirname(fsPath)
+    })
+    .filter(inclusion => {
+      return !exclusions.includes(inclusion)
+    })
 }
-
 
 export function getJavaConfig(javaHome: string): any {
   const origConfig = getJavaConfiguration()
@@ -182,20 +194,20 @@ export function getJavaConfig(javaHome: string): any {
   javaConfig.home = javaHome
   // Since source & output path are project specific settings. To avoid pollute other project,
   // we avoid reading the value from the global scope.
-  javaConfig.project.outputPath = origConfig.inspect<string>("project.outputPath").workspaceValue
-  javaConfig.project.sourcePaths = origConfig.inspect<string[]>("project.sourcePaths").workspaceValue
+  javaConfig.project.outputPath = origConfig.inspect<string>('project.outputPath').workspaceValue
+  javaConfig.project.sourcePaths = origConfig.inspect<string[]>('project.sourcePaths').workspaceValue
   javaConfig.format.insertSpaces = editorConfig.get('insertSpaces')
   javaConfig.format.tabSize = editorConfig.get('tabSize')
   const isInsider: boolean = false
   const androidSupport = javaConfig.jdt.ls.androidSupport.enabled
   switch (androidSupport) {
-    case "auto":
+    case 'auto':
       javaConfig.jdt.ls.androidSupport.enabled = isInsider
       break
-    case "on":
+    case 'on':
       javaConfig.jdt.ls.androidSupport.enabled = true
       break
-    case "off":
+    case 'off':
       javaConfig.jdt.ls.androidSupport.enabled = false
       break
     default:
@@ -204,16 +216,16 @@ export function getJavaConfig(javaHome: string): any {
   }
 
   const completionCaseMatching = javaConfig.completion.matchCase
-  if (completionCaseMatching === "auto") {
-    javaConfig.completion.matchCase = isInsider ? "firstLetter" : "off"
+  if (completionCaseMatching === 'auto') {
+    javaConfig.completion.matchCase = isInsider ? 'firstLetter' : 'off'
   }
 
   const javacSupport = javaConfig.jdt.ls.javac.enabled
   switch (javacSupport) {
-    case "on":
+    case 'on':
       javaConfig.jdt.ls.javac.enabled = true
       break
-    case "off":
+    case 'off':
       javaConfig.jdt.ls.javac.enabled = false
       break
     default:
@@ -221,18 +233,21 @@ export function getJavaConfig(javaHome: string): any {
       break
   }
 
-  if (javaConfig.completion.matchCase === "auto") {
-    javaConfig.completion.matchCase = "firstLetter"
+  if (javaConfig.completion.matchCase === 'auto') {
+    javaConfig.completion.matchCase = 'firstLetter'
   }
 
   const guessMethodArguments = javaConfig.completion.guessMethodArguments
-  if (guessMethodArguments === "auto") {
-    javaConfig.completion.guessMethodArguments = isInsider ? "off" : "insertBestGuessedArguments"
+  if (guessMethodArguments === 'auto') {
+    javaConfig.completion.guessMethodArguments = isInsider ? 'off' : 'insertBestGuessedArguments'
   }
 
-  if (!isPreferenceOverridden("java.implementationCodeLens") && typeof javaConfig.implementationsCodeLens?.enabled === 'boolean') {
+  if (
+    !isPreferenceOverridden('java.implementationCodeLens') &&
+    typeof javaConfig.implementationsCodeLens?.enabled === 'boolean'
+  ) {
     const deprecatedImplementations = javaConfig.implementationsCodeLens.enabled
-    javaConfig.implementationCodeLens = deprecatedImplementations ? "types" : "none"
+    javaConfig.implementationCodeLens = deprecatedImplementations ? 'types' : 'none'
   }
 
   return javaConfig
@@ -269,7 +284,7 @@ export async function addAutoDetectedJdks(configuredJREs: any[]): Promise<any[]>
 
     configuredJREs.push({
       name: jreName,
-      path: jre.homedir,
+      path: jre.homedir
     })
 
     addedJreNames.add(jreName)
@@ -282,12 +297,7 @@ export function equals(one: any, other: any): boolean {
   if (one === other) {
     return true
   }
-  if (
-    one === null ||
-    one === undefined ||
-    other === null ||
-    other === undefined
-  ) {
+  if (one === null || one === undefined || other === null || other === undefined) {
     return false
   }
   if (typeof one !== typeof other) {
@@ -368,4 +378,21 @@ function comparePosition(position: Position, other: Position): number {
   if (other.line == position.line && position.character > other.character) return 1
   if (other.line == position.line && position.character == other.character) return 0
   return -1
+}
+
+export function resolveActualCause(callstack: any): any {
+  if (!callstack) {
+    return
+  }
+
+  const callstacks = callstack.split(/\r?\n/)
+  if (callstacks?.length) {
+    for (let i = callstacks.length - 1; i >= 0; i--) {
+      if (callstacks[i]?.startsWith('Caused by:')) {
+        return callstacks.slice(i).join('\n')
+      }
+    }
+  }
+
+  return callstack
 }

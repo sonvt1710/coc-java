@@ -16,6 +16,7 @@ class ApiManager {
   private onDidServerModeChangeEmitter: Emitter<ServerMode> = new Emitter<ServerMode>();
   private onDidProjectsImportEmitter: Emitter<Uri[]> = new Emitter<Uri[]>();
   private onDidProjectsDeleteEmitter: Emitter<Uri[]> = new Emitter<Uri[]>();
+  private traceEventEmitter: Emitter<any> = new Emitter<any>()
   private serverReadyPromiseResolve: (result: boolean) => void
 
   public initialize(requirements: RequirementsData, serverMode: ServerMode): void {
@@ -38,6 +39,7 @@ class ApiManager {
     const onDidServerModeChange = this.onDidServerModeChangeEmitter.event
     const onDidProjectsImport = this.onDidProjectsImportEmitter.event
     const onDidProjectsDelete = this.onDidProjectsDeleteEmitter.event
+    const traceEvent = this.traceEventEmitter.event
 
     const serverReadyPromise: Promise<boolean> = new Promise<boolean>((resolve) => {
       this.serverReadyPromiseResolve = resolve
@@ -62,6 +64,7 @@ class ApiManager {
       onDidProjectsImport,
       onDidProjectsDelete,
       serverReady,
+      trackEvent: traceEvent
     }
   }
 
@@ -87,6 +90,10 @@ class ApiManager {
 
   public fireDidProjectsDelete(event: Uri[]): void {
     this.onDidProjectsDeleteEmitter.fire(event)
+  }
+
+  public fireTraceEvent(event: any): void {
+    this.traceEventEmitter.fire(event)
   }
 
   public updateServerMode(mode: ServerMode): void {
