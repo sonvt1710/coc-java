@@ -26,6 +26,14 @@ export const HEAP_DUMP_LOCATION = '-XX:HeapDumpPath='
  */
 export const HEAP_DUMP = '-XX:+HeapDumpOnOutOfMemoryError'
 
+/**
+ * Argument that specifies name of the dependency collector implementation to use.
+ * `df` for depth-first and `bf` for breadth-first.
+ * See: https://github.com/apache/maven-resolver/blob/maven-resolver-1.9.7/src/site/markdown/configuration.md
+ */
+const DEPENDENCY_COLLECTOR_IMPL = '-Daether.dependencyCollector.impl=';
+const DEPENDENCY_COLLECTOR_IMPL_BF = 'bf';
+
 export function prepareExecutable(requirements: RequirementsData, workspacePath, javaConfig, context: ExtensionContext, isSyntaxServer: boolean): Executable {
   const executable: Executable = Object.create(null)
   const options: ExecutableOptions = Object.create(null)
@@ -160,6 +168,9 @@ function prepareParams(requirements: RequirementsData, javaConfiguration, worksp
     }
     if (vmargs.indexOf(HEAP_DUMP_LOCATION) < 0) {
       params.push(`${HEAP_DUMP_LOCATION}${path.dirname(workspacePath)}`)
+    }
+    if (vmargs.indexOf(DEPENDENCY_COLLECTOR_IMPL) < 0) {
+      params.push(`${DEPENDENCY_COLLECTOR_IMPL}${DEPENDENCY_COLLECTOR_IMPL_BF}`);
     }
 
     const sharedIndexLocation: string = resolveIndexCache(context)
