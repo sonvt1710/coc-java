@@ -106,7 +106,7 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
 
   initializeRecommendation(context)
 
-  registerOutOfMemoryDetection(storagePath)
+  registerOutOfMemoryDetection(storagePath, context)
 
   cleanJavaWorkspaceStorage()
 
@@ -981,10 +981,11 @@ async function cleanJavaWorkspaceStorage() {
   }
 }
 
-function registerOutOfMemoryDetection(storagePath: string) {
+function registerOutOfMemoryDetection(storagePath: string, context: ExtensionContext) {
   const heapDumpFolder = getHeapDumpFolderFromSettings() || storagePath
   let pattern = new RelativePattern(heapDumpFolder, "java_*.hprof")
   let watcher = workspace.createFileSystemWatcher(pattern, false, true, true)
+  context.subscriptions.push(watcher)
   watcher.onDidCreate(e => {
     // Only clean heap dumps that are generated in the default location.
     // The default location is the extension global storage
