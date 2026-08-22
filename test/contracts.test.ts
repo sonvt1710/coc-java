@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { commands, ConfigurationTarget, snippetManager, SymbolKind, TreeItemCollapsibleState, Uri, workspace } from 'coc.nvim'
+import { commands, ConfigurationTarget, snippetManager, SymbolKind, TreeItemCollapsibleState, Uri, window, workspace } from 'coc.nvim'
 import packageJson from '../package.json'
 import { apiManager } from '../src/apiManager.ts'
 import type { ExtensionAPI } from '../src/extension.api.ts'
@@ -18,6 +18,7 @@ import { getRuntimeMajorVersion, isRuntimeVersionInRange, sortJdksByVersion } fr
 import { createExtendedOutlineNodes, extendedOutlineTree, ExtendedOutlineTreeDataProvider } from '../src/outline/extendedOutlineTree.ts'
 import { requestMoveWithConfirmation } from '../src/refactorAction.ts'
 import { escapeSnippetLiterals, prepareSnippetCodeAction } from '../src/snippetEdit.ts'
+import { askForProjects } from '../src/standardLanguageClientUtils.ts'
 
 const SERVER_TIMEOUT = 10_000
 
@@ -36,6 +37,7 @@ interface VirtualServerState {
 interface VirtualServer {
   getState(): VirtualServerState
   setBuildStatus(status: number): void
+  setProjectUris(projectUris: string[]): void
   waitForRequest(method: string, timeout?: number, after?: number): Promise<RecordedMessage>
   waitForNotification(method: string, timeout?: number, after?: number, expectedParams?: unknown): Promise<RecordedMessage>
 }
@@ -644,6 +646,39 @@ describe('coc-java fast contracts', () => {
       return commands.executeCommand('java.project.createModuleInfo.command')
     })
     assert.equal(projectRequest.params?.command, 'java.project.getAll')
+  })
+
+  it('shows workspace-relative paths for projects with duplicate names', async () => {
+    const projectPaths = [
+      path.join(workspace.root, 'project_1', 'service'),
+      path.join(workspace.root, 'project_1', 'client'),
+      path.join(workspace.root, 'project_2', 'service'),
+      path.join(workspace.root, 'project_2', 'client'),
+    ]
+    virtualServer.setProjectUris(projectPaths.map(projectPath => Uri.file(projectPath).toString()))
+    const originalShowQuickPick = window.showQuickPick
+    let projectPicks: Array<{ label: string; description?: string; detail: string }> = []
+    window.showQuickPick = (async (items: typeof projectPicks) => {
+      projectPicks = items
+      return undefined
+    }) as typeof window.showQuickPick
+
+    try {
+      const activeFile = Uri.file(path.join(projectPaths[0], 'src', 'Main.java'))
+      assert.equal((await askForProjects(activeFile, 'Select projects')).length, 0)
+      assert.deepEqual(projectPicks.map(item => item.label), ['service', 'client', 'service', 'client'])
+      assert.deepEqual(projectPicks.map(item => item.description), [
+        path.join('project_1', 'service'),
+        path.join('project_1', 'client'),
+        path.join('project_2', 'service'),
+        path.join('project_2', 'client'),
+      ])
+      assert.equal(projectPicks[0].picked, true)
+      assert.deepEqual(projectPicks.map(item => item.detail), projectPaths)
+    } finally {
+      window.showQuickPick = originalShowQuickPick
+      virtualServer.setProjectUris([])
+    }
   })
 
   it('opens each hierarchy direction directly from the current Java cursor', async () => {

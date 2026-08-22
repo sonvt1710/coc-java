@@ -52,6 +52,7 @@ class VirtualLanguageServer {
     this.requests = []
     this.notifications = []
     this.buildStatus = BUILD_SUCCEEDED
+    this.projectUris = []
     this._requestWaiters = []
     this._notificationWaiters = []
     this._statusTimer = undefined
@@ -212,6 +213,10 @@ class VirtualLanguageServer {
 
   setBuildStatus(status) {
     this.buildStatus = status
+  }
+
+  setProjectUris(projectUris) {
+    this.projectUris = projectUris
   }
 
   _accept(socket) {
@@ -508,7 +513,7 @@ class VirtualLanguageServer {
       case 'java.project.isTestFile':
         return false
       case 'java.project.getAll':
-        return []
+        return this.projectUris
       case 'java.project.resolveSourceAttachment':
         return { attributes: {} }
       case 'java.project.updateSourceAttachment':

@@ -83,6 +83,12 @@ function isJavaConfigFile(filePath: string): boolean {
   return regEx.test(fileName)
 }
 
+function getProjectDescription(projectPath: string): string {
+  const workspaceRelativePath = workspace.asRelativePath(projectPath)
+  if (!path.isAbsolute(workspaceRelativePath)) return workspaceRelativePath
+  return path.relative(workspace.root, projectPath) || path.basename(projectPath)
+}
+
 /**
  * Ask user to select projects and return the selected projects' uris.
  * @param activeFileUri the uri of the active file.
@@ -130,6 +136,7 @@ async function generateProjectPicks(activeFileUri: Uri | undefined): Promise<Qui
     const projectPath = Uri.parse(uriString).fsPath
     return {
       label: path.basename(projectPath),
+      description: getProjectDescription(projectPath),
       detail: projectPath,
     }
   }).filter(Boolean)
