@@ -239,6 +239,33 @@ describe('coc-java fast contracts', () => {
     assert.equal(requirements.java_version, 23)
   })
 
+  it('resolves a Gradle multi-project build from its settings file', async () => {
+    const gradleRoot = path.join(fixtureDirectory, 'gradle-multi-project')
+    const subprojectRoot = path.join(gradleRoot, 'app')
+    const javaFile = path.join(subprojectRoot, 'src', 'main', 'java', 'App.java')
+    await fs.mkdir(path.dirname(javaFile), { recursive: true })
+    await fs.writeFile(path.join(gradleRoot, 'settings.gradle.kts'), 'include("app")\n')
+    await fs.writeFile(path.join(subprojectRoot, 'build.gradle.kts'), 'plugins { java }\n')
+    await fs.writeFile(javaFile, 'class App {}\n')
+
+    const document = await workspace.openTextDocument(Uri.file(javaFile))
+    try {
+      await workspace.jumpTo(document.uri)
+      await workspace.nvim.command('setfiletype java')
+      const startedAt = Date.now()
+      let folder = workspace.getWorkspaceFolder(document.uri)
+      while (!folder && Date.now() - startedAt < 2_000) {
+        await new Promise(resolve => setTimeout(resolve, 25))
+        folder = workspace.getWorkspaceFolder(document.uri)
+      }
+      assert.ok(folder, 'the nested Gradle source should resolve a workspace folder')
+      assert.equal(path.resolve(Uri.parse(folder.uri).fsPath), gradleRoot)
+    } finally {
+      await workspace.jumpTo(Uri.parse(javaDocumentUri))
+      await workspace.nvim.call('CocActionAsync', ['removeWorkspaceFolder', gradleRoot])
+    }
+  })
+
   it('loads every contributed Java setting and forwards it during initialization', () => {
     const properties = packageJson.contributes.configuration.properties as Record<string, ConfigurationSchema>
     const entries = Object.entries(properties)

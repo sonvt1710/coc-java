@@ -47,6 +47,8 @@
           "package.json",
           ".project",
           ".classpath",
+          "settings.gradle.kts",
+          "settings.gradle",
           "build.gradle.kts",
           "build.gradle"
         ]
