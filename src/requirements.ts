@@ -70,18 +70,18 @@ export async function resolveRequirements(context: ExtensionContext): Promise<Re
     }
 
     if (!toolingJre || toolingJreVersion < requiredJdkVersion) {
-      let filtered = javaSettingsRuntimes.filter((r) => r.version.major >= requiredJdkVersion)
+      let filtered = javaSettingsRuntimes.filter((runtime) => isRuntimeVersionInRange(runtime, requiredJdkVersion))
       if (filtered.length) {
         // using the closest to the requiredJdkVersion entry
         toolingJre = filtered[filtered.length - 1].homedir
-        toolingJreVersion = filtered[filtered.length - 1].version?.major
+        toolingJreVersion = getRuntimeMajorVersion(filtered[filtered.length - 1])
       }
 
-      filtered = javaSystemRuntimes.filter((r) => r.version.major >= requiredJdkVersion)
+      filtered = javaSystemRuntimes.filter((runtime) => isRuntimeVersionInRange(runtime, requiredJdkVersion))
       if (filtered.length && toolingJreVersion < requiredJdkVersion) {
         // using the closest to the requiredJdkVersion entry
         toolingJre = filtered[filtered.length - 1].homedir
-        toolingJreVersion = filtered[filtered.length - 1].version?.major
+        toolingJreVersion = getRuntimeMajorVersion(filtered[filtered.length - 1])
       }
 
       if (toolingJreVersion < requiredJdkVersion) {
@@ -104,7 +104,7 @@ export async function resolveRequirements(context: ExtensionContext): Promise<Re
     })
     if (defaultRuntimes.length > 0) {
       javaHome = defaultRuntimes[0].homedir
-      javaVersion = defaultRuntimes[0].version.major
+      javaVersion = getRuntimeMajorVersion(defaultRuntimes[0])
       createLogger().info(
         `Using the default JDK from java.configuration.runtimes - '${javaHome}' as the initial default project JDK.`,
       )
@@ -228,8 +228,22 @@ export function sortJdksBySource(jdks: IJavaRuntime[]) {
  * Sort by major version in descend order.
  */
 export function sortJdksByVersion(jdks: IJavaRuntime[]): IJavaRuntime[] {
-  jdks.sort((a, b) => (b.version?.major ?? 0) - (a.version?.major ?? 0))
+  jdks.sort((a, b) => getRuntimeMajorVersion(b) - getRuntimeMajorVersion(a))
   return jdks
+}
+
+export function getRuntimeMajorVersion(runtime: IJavaRuntime | undefined): number {
+  const majorVersion = runtime?.version?.major
+  return Number.isFinite(majorVersion) ? majorVersion : 0
+}
+
+export function isRuntimeVersionInRange(
+  runtime: IJavaRuntime | undefined,
+  minimumVersion: number,
+  maximumVersion = Number.POSITIVE_INFINITY,
+): boolean {
+  const majorVersion = runtime?.version?.major
+  return Number.isFinite(majorVersion) && majorVersion >= minimumVersion && majorVersion <= maximumVersion
 }
 
 export function parseMajorVersion(version: string): number {

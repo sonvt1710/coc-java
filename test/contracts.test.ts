@@ -14,6 +14,7 @@ import { addAppCDSParams, addJavacParams, getPredefinedVariablesEnv, getUnicodeL
 import { sanitizeCommandLinksInHover } from '../src/hoverAction.ts'
 import { isCompatibleLombokVersion, parseLombokVersion, parseLombokVersionNumber } from '../src/lombokSupport.ts'
 import { isCompatibleRuntime } from '../src/javaRuntimes.ts'
+import { getRuntimeMajorVersion, isRuntimeVersionInRange, sortJdksByVersion } from '../src/requirements.ts'
 import { createExtendedOutlineNodes, extendedOutlineTree, ExtendedOutlineTreeDataProvider } from '../src/outline/extendedOutlineTree.ts'
 import { requestMoveWithConfirmation } from '../src/refactorAction.ts'
 import { escapeSnippetLiterals, prepareSnippetCodeAction } from '../src/snippetEdit.ts'
@@ -321,6 +322,18 @@ describe('coc-java fast contracts', () => {
     assert.equal(isCompatibleRuntime({ homedir: '/jdk-8', version: { java_version: '1.8.0', major: 8 } }, 'JavaSE-9'), false)
     assert.equal(isCompatibleRuntime({ homedir: '/jdk-17', version: { java_version: '17.0.0', major: 17 } }, 'JavaSE-17'), true)
     assert.equal(isCompatibleRuntime({ homedir: '/jdk-17', version: { java_version: '17.0.0', major: 17 } }, 'JavaSE-21'), false)
+  })
+
+  it('ignores detected JDKs whose versions cannot be determined', () => {
+    const unknown = { homedir: '/jdk-unknown' }
+    const java17 = { homedir: '/jdk-17', version: { java_version: '17.0.0', major: 17 } }
+    const java21 = { homedir: '/jdk-21', version: { java_version: '21.0.0', major: 21 } }
+
+    assert.equal(getRuntimeMajorVersion(unknown), 0)
+    assert.equal(isRuntimeVersionInRange(unknown, 17), false)
+    assert.equal(isRuntimeVersionInRange(java17, 17, 20), true)
+    assert.equal(isRuntimeVersionInRange(java21, 17, 20), false)
+    assert.deepEqual(sortJdksByVersion([unknown, java17, java21]), [java21, java17, unknown])
   })
 
   it('routes API and command requests through the virtual server', async () => {

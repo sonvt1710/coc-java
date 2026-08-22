@@ -24,7 +24,7 @@ import { collectBuildFilePattern, onExtensionChange } from "./plugin"
 import { pomCodeActionMetadata, PomCodeActionProvider } from "./pom/pomCodeActionProvider"
 import { ActionableNotification, BuildProjectParams, BuildProjectRequest, BuildWorkspaceStatus, CompileWorkspaceRequest, EventNotification, EventType, ExecuteClientCommandRequest, FeatureStatus, FindLinks, GradleCompatibilityInfo, LinkLocation, ProgressReportNotification, ServerNotification, SourceAttachmentAttribute, SourceAttachmentRequest, SourceAttachmentResult, SourceInvalidatedEvent, StatusNotification, UpgradeGradleWrapperInfo } from "./protocol"
 import * as refactorAction from './refactorAction'
-import { getJdkUrl, RequirementsData, sortJdksBySource, sortJdksByVersion } from "./requirements"
+import { getJdkUrl, getRuntimeMajorVersion, isRuntimeVersionInRange, RequirementsData, sortJdksBySource, sortJdksByVersion } from "./requirements"
 import { serverStatus, ServerStatusKind } from "./serverStatus"
 import { serverStatusBarProvider } from "./serverStatusBarProvider"
 import { activationProgressNotification, serverTaskPresenter } from "./serverTaskPresenter"
@@ -205,7 +205,7 @@ export class StandardLanguageClient {
             const highestJavaVersion = Number(info.highestJavaVersion)
             let runtimes = await findRuntimes({ checkJavac: true, withVersion: true, withTags: true })
             runtimes = runtimes.filter(runtime => {
-              return runtime.version.major <= highestJavaVersion
+              return isRuntimeVersionInRange(runtime, 0, highestJavaVersion)
             })
             sortJdksByVersion(runtimes)
             sortJdksBySource(runtimes)
@@ -213,7 +213,7 @@ export class StandardLanguageClient {
             if (!runtimes.length) {
               options.push(GET_JDK)
             } else {
-              options.push(USE_JAVA + runtimes[0].version.major + AS_GRADLE_JVM)
+              options.push(USE_JAVA + getRuntimeMajorVersion(runtimes[0]) + AS_GRADLE_JVM)
             }
             this.showGradleCompatibilityIssueNotification(info.message, options, info.projectUri, info.recommendedGradleVersion, runtimes[0]?.homedir)
             break
