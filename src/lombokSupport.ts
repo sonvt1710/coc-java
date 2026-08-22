@@ -42,8 +42,8 @@ export function cleanupLombokCache(context: ExtensionContext) {
   context.workspaceState.update(JAVA_LOMBOK_PATH, undefined)
 }
 
-function getExtensionLombokPath(): string {
-  const lombokHome = path.resolve(__dirname, '../server')
+function getExtensionLombokPath(context: ExtensionContext): string {
+  const lombokHome = path.resolve(context.extensionPath, 'server')
   const lombokJar: Array<string> = glob.sync('lombok*.jar', { cwd: lombokHome })
 
   if (lombokJar === undefined || lombokJar.length === 0) {
@@ -119,12 +119,12 @@ export function addLombokParam(context: ExtensionContext, params: string[]) {
     }
     else {
       cleanupLombokCache(context)
-      window.showWarningMessage(`The configured lombok ${lombokPath2VersionNumber(lombokJarPath)} is not supported, falling back ${lombokPath2VersionNumber(getExtensionLombokPath())}`)
+      window.showWarningMessage(`The configured lombok ${lombokPath2VersionNumber(lombokJarPath)} is not supported, falling back ${lombokPath2VersionNumber(getExtensionLombokPath(context))}`)
     }
   }
 
   if (isExtensionLombok) {
-    lombokJarPath = getExtensionLombokPath()
+    lombokJarPath = getExtensionLombokPath(context)
   }
 
   if (!lombokJarPath) {
@@ -201,7 +201,7 @@ export async function checkLombokDependency(context: ExtensionContext, projectUr
 
 export function registerLombokConfigureCommand(context: ExtensionContext) {
   context.subscriptions.push(commands.registerCommand(Commands.LOMBOK_CONFIGURE, async (buildFilePath: string) => {
-    const extensionLombokPath: string = getExtensionLombokPath()
+    const extensionLombokPath: string = getExtensionLombokPath(context)
     if (!extensionLombokPath || !projectLombokPath) {
       return
     }

@@ -20,10 +20,11 @@ const env = { appName: 'coc.nvim' }
 const EXCLUDE_FILE_CONFIG = 'configuration.checkProjectSettingsExclusions'
 export const ORGANIZE_IMPORTS_ON_PASTE = 'actionsOnPaste.organizeImports' // java.actionsOnPaste.organizeImports
 
-let oldConfig: WorkspaceConfiguration = getJavaConfiguration()
+let oldConfig: WorkspaceConfiguration
 const gradleWrapperPromptDialogs = []
 
 export function onConfigurationChange(workspacePath: string, context: ExtensionContext) {
+  oldConfig = getJavaConfiguration()
   return workspace.onDidChangeConfiguration(params => {
     if (!params.affectsConfiguration('java')) {
       return

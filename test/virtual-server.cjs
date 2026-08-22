@@ -20,6 +20,17 @@ function emptyEdit() {
   return { changes: {} }
 }
 
+function containsSubset(value, expected) {
+  if (expected === undefined) return true
+  if (expected === null || typeof expected !== 'object') return Object.is(value, expected)
+  if (value === null || typeof value !== 'object') return false
+  if (Array.isArray(expected)) {
+    return Array.isArray(value) && expected.length === value.length
+      && expected.every((item, index) => containsSubset(value[index], item))
+  }
+  return Object.entries(expected).every(([key, item]) => containsSubset(value[key], item))
+}
+
 /**
  * A small JSON-RPC language server used by fast coc-test tests.
  *
@@ -41,6 +52,7 @@ class VirtualLanguageServer {
     this.requests = []
     this.notifications = []
     this._requestWaiters = []
+    this._notificationWaiters = []
     this._statusTimer = undefined
     this._previousClientPort = undefined
     this._hadClientPort = false
@@ -89,6 +101,11 @@ class VirtualLanguageServer {
       clearTimeout(waiter.timer)
       waiter.reject(new Error('Virtual language server stopped'))
     }
+    const notificationWaiters = this._notificationWaiters.splice(0)
+    for (const waiter of notificationWaiters) {
+      clearTimeout(waiter.timer)
+      waiter.reject(new Error('Virtual language server stopped'))
+    }
 
     const connection = this.connection
     const socket = this.socket
@@ -123,8 +140,9 @@ class VirtualLanguageServer {
    * Wait for the next request with the given method. Existing requests are
    * returned first, which also makes this useful after initialization.
    */
-  waitForRequest(method, timeout = 5000) {
-    const existing = this.requests.find(request => request.method === method && !request.claimed)
+  waitForRequest(method, timeout = 5000, after = 0) {
+    const existing = this.requests.find((request, index) => index >= after
+      && request.method === method && !request.claimed)
     if (existing) {
       existing.claimed = true
       return Promise.resolve(existing)
@@ -133,6 +151,7 @@ class VirtualLanguageServer {
     return new Promise((resolve, reject) => {
       const waiter = {
         method,
+        after,
         resolve: request => {
           request.claimed = true
           resolve(request)
@@ -145,6 +164,36 @@ class VirtualLanguageServer {
         }, timeout),
       }
       this._requestWaiters.push(waiter)
+    })
+  }
+
+  /** Wait for a notification recorded at or after the given message index. */
+  waitForNotification(method, timeout = 5000, after = 0, expectedParams) {
+    const existing = this.notifications.find((notification, index) => index >= after
+      && notification.method === method && !notification.claimed
+      && containsSubset(notification.params, expectedParams))
+    if (existing) {
+      existing.claimed = true
+      return Promise.resolve(existing)
+    }
+
+    return new Promise((resolve, reject) => {
+      const waiter = {
+        method,
+        after,
+        expectedParams,
+        resolve: notification => {
+          notification.claimed = true
+          resolve(notification)
+        },
+        reject,
+        timer: setTimeout(() => {
+          const index = this._notificationWaiters.indexOf(waiter)
+          if (index !== -1) this._notificationWaiters.splice(index, 1)
+          reject(new Error(`Timed out waiting for virtual server notification ${method}`))
+        }, timeout),
+      }
+      this._notificationWaiters.push(waiter)
     })
   }
 
@@ -285,6 +334,11 @@ class VirtualLanguageServer {
       }]
     })
 
+    connection.onRequest('textDocument/references', params => {
+      this._recordRequest('textDocument/references', params)
+      return []
+    })
+
     connection.onRequest('textDocument/hover', params => {
       this._recordRequest('textDocument/hover', params)
       return { contents: [{ language: 'java', value: 'class Greeter' }] }
@@ -356,6 +410,7 @@ class VirtualLanguageServer {
         this.socket = undefined
         this.connection = undefined
       }
+      void this.stop().catch(() => {})
     })
     connection.listen()
   }
@@ -400,7 +455,9 @@ class VirtualLanguageServer {
   _recordRequest(method, params) {
     const request = { method, params, claimed: false }
     this.requests.push(request)
-    const waiterIndex = this._requestWaiters.findIndex(waiter => waiter.method === method)
+    const requestIndex = this.requests.length - 1
+    const waiterIndex = this._requestWaiters.findIndex(waiter => waiter.method === method
+      && requestIndex >= waiter.after)
     if (waiterIndex !== -1) {
       const [waiter] = this._requestWaiters.splice(waiterIndex, 1)
       clearTimeout(waiter.timer)
@@ -418,7 +475,16 @@ class VirtualLanguageServer {
   }
 
   _recordNotification(method, params) {
-    this.notifications.push({ method, params })
+    const notification = { method, params, claimed: false }
+    this.notifications.push(notification)
+    const notificationIndex = this.notifications.length - 1
+    const waiterIndex = this._notificationWaiters.findIndex(waiter => waiter.method === method
+      && notificationIndex >= waiter.after && containsSubset(params, waiter.expectedParams))
+    if (waiterIndex !== -1) {
+      const [waiter] = this._notificationWaiters.splice(waiterIndex, 1)
+      clearTimeout(waiter.timer)
+      waiter.resolve(notification)
+    }
   }
 }
 

@@ -21,13 +21,7 @@
     "build": "node esbuild.js",
     "prepare": "node esbuild.js",
     "lint": "tsc -p tsconfig.json",
-    "test": "npm run test:fast",
-    "test:fast": "node test/run-fast-tests.cjs --nvim \"test/contracts.test.ts\"",
-    "test:fast:nvim": "node test/run-fast-tests.cjs --nvim \"test/contracts.test.ts\"",
-    "test:fast:vim": "node test/run-fast-tests.cjs --vim \"test/contracts.test.ts\"",
-    "test:integration": "coc-test \"test/extension.test.ts\"",
-    "test:integration:nvim": "coc-test --nvim \"test/extension.test.ts\"",
-    "test:integration:vim": "coc-test --vim \"test/extension.test.ts\""
+    "test": "COC_JAVA_TEST_SERVER=virtual coc-test \"test/contracts.test.ts\" && coc-test \"test/extension.test.ts\""
   },
   "activationEvents": [
     "onLanguage:java",
@@ -1280,7 +1274,8 @@
   "author": "chemzqm@gmail.com",
   "license": "EPL-1.0",
   "coc-test": {
-    "entryFile": "test-support/extension.cjs",
+    "entryFile": "src/extension.ts",
+    "setup": "test/setup.mjs",
     "user-settings": {
       "java.server.launchMode": "Standard",
       "java.transport": "stdio",

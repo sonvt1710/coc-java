@@ -3,7 +3,8 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { commands, extensions, workspace, type Document } from 'coc.nvim'
+import { commands, workspace, type Document } from 'coc.nvim'
+import { apiManager } from '../src/apiManager.ts'
 import type { ExtensionAPI } from '../src/extension.api.ts'
 
 const SERVER_TIMEOUT = 180_000
@@ -44,11 +45,7 @@ async function waitForLanguageId(document: Document, timeout = 15_000): Promise<
 }
 
 before(async () => {
-  const extension = extensions.getExtensionById<ExtensionAPI>('coc-java')
-  assert.ok(extension, 'coc-java should be loaded')
-  assert.equal(extension.isActive, true, 'coc-java should be activated by coc-test')
-
-  api = extension.exports
+  api = apiManager.getApiInstance()
   await withTimeout(api.serverReady(), SERVER_TIMEOUT, 'Java language server did not become ready')
 
   fixtureDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-java-test-'))

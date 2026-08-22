@@ -14,8 +14,7 @@ class ServerStatusBarProvider implements Disposable {
   private statusIcons: { [key: string]: string }
 
   constructor() {
-    const icons = getJavaConfiguration().get('jdt.ls.statusIcons', {})
-    this.statusIcons = icons ?? {}
+    this.statusIcons = {}
     this.isAdvancedStatusBarItem = false
   }
 
@@ -26,6 +25,7 @@ class ServerStatusBarProvider implements Disposable {
   }
 
   public initialize(context: ExtensionContext): void {
+    this.statusIcons = getJavaConfiguration().get('jdt.ls.statusIcons', {}) ?? {}
     if (supportsLanguageStatus()) {
       this.languageStatusItem = ServerStatusItemFactory.create()
     } else {

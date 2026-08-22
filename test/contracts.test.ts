@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict'
-import { before, describe, it } from 'node:test'
-import { commands, extensions, Uri, workspace } from 'coc.nvim'
+import { promises as fs } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { after, before, describe, it } from 'node:test'
+import { commands, ConfigurationTarget, Uri, workspace } from 'coc.nvim'
+import packageJson from '../package.json'
+import { apiManager } from '../src/apiManager.ts'
 import type { ExtensionAPI } from '../src/extension.api.ts'
+import { getJavaEncoding, getJavaServerMode, ServerMode } from '../src/settings.ts'
+import { getBuildFilePatterns, getJavaConfig } from '../src/utils.ts'
 
 const SERVER_TIMEOUT = 10_000
 
@@ -17,11 +24,14 @@ interface VirtualServerState {
   notifications: RecordedMessage[]
 }
 
-interface TestExtensionAPI extends ExtensionAPI {
-  $testServer: {
-    getState(): VirtualServerState
-    waitForRequest(method: string, timeout?: number): Promise<RecordedMessage>
-  }
+interface VirtualServer {
+  getState(): VirtualServerState
+  waitForRequest(method: string, timeout?: number, after?: number): Promise<RecordedMessage>
+  waitForNotification(method: string, timeout?: number, after?: number, expectedParams?: unknown): Promise<RecordedMessage>
+}
+
+declare global {
+  var __coc_java_test_server__: VirtualServer | undefined
 }
 
 interface ConfigurationSchema {
@@ -31,8 +41,10 @@ interface ConfigurationSchema {
   default?: unknown
 }
 
-let api: TestExtensionAPI
-let packageJson: any
+let api: ExtensionAPI
+let virtualServer: VirtualServer
+let fixtureDirectory: string
+let javaDocumentUri: string
 
 function plain<T>(value: T): T {
   return value === undefined ? value : JSON.parse(JSON.stringify(value))
@@ -62,25 +74,45 @@ async function withTimeout<T>(promise: Promise<T>, timeout: number, message: str
   }
 }
 
-async function waitForNotification(method: string, timeout = 5_000): Promise<RecordedMessage> {
-  const startedAt = Date.now()
-  while (Date.now() - startedAt < timeout) {
-    const notification = api.$testServer.getState().notifications.find(item => item.method === method)
-    if (notification) return notification
-    await new Promise(resolve => setTimeout(resolve, 20))
-  }
-  throw new Error(`Timed out waiting for virtual server notification ${method}`)
+async function executeAndWaitForRequest<T>(method: string, execute: () => Promise<T>): Promise<[T, RecordedMessage]> {
+  const after = virtualServer.getState().requests.length
+  const pending = virtualServer.waitForRequest(method, 5_000, after)
+  const result = await execute()
+  return [result, await pending]
+}
+
+async function executeAndWaitForNotification<T>(
+  method: string,
+  execute: () => Promise<T>,
+  expectedParams?: unknown,
+): Promise<[T, RecordedMessage]> {
+  const after = virtualServer.getState().notifications.length
+  const pending = virtualServer.waitForNotification(method, 5_000, after, expectedParams)
+  const result = await execute()
+  return [result, await pending]
 }
 
 before(async () => {
   assert.equal(process.env.COC_JAVA_TEST_SERVER, 'virtual')
-  const extension = extensions.getExtensionById<TestExtensionAPI>('coc-java')
-  assert.ok(extension, 'coc-java should be loaded')
-  assert.equal(extension.isActive, true, 'coc-java should be activated by coc-test')
+  virtualServer = globalThis.__coc_java_test_server__
+  assert.ok(virtualServer, 'coc-test setup should start the virtual Java server')
 
-  api = extension.exports
-  packageJson = extension.packageJSON
+  api = apiManager.getApiInstance()
   await withTimeout(api.serverReady(), SERVER_TIMEOUT, 'virtual Java server did not become ready')
+
+  fixtureDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-java-contracts-'))
+  const javaFile = path.join(fixtureDirectory, 'Greeter.java')
+  await fs.writeFile(javaFile, 'public class Greeter {}\n')
+  const document = await workspace.openTextDocument(Uri.file(javaFile))
+  await workspace.jumpTo(document.uri)
+  await workspace.nvim.command('setfiletype java')
+  javaDocumentUri = document.uri
+})
+
+after(async () => {
+  if (fixtureDirectory) {
+    await fs.rm(fixtureDirectory, { recursive: true, force: true })
+  }
 })
 
 describe('coc-java fast contracts', () => {
@@ -89,7 +121,7 @@ describe('coc-java fast contracts', () => {
     const entries = Object.entries(properties)
     assert.equal(entries.length, 114, 'update this contract when settings are intentionally added or removed')
 
-    const javaSettings = api.$testServer.getState().initializeParams?.initializationOptions?.settings?.java
+    const javaSettings = virtualServer.getState().initializeParams?.initializationOptions?.settings?.java
     assert.ok(javaSettings, 'the virtual server should capture Java initialization settings')
 
     for (const [key, schema] of entries) {
@@ -111,6 +143,45 @@ describe('coc-java fast contracts', () => {
       const clientOnlyUndefined = key === 'java.project.outputPath' || key === 'java.project.sourcePaths'
       assert.ok(clientOnlyUndefined || hasNestedValue(javaSettings, relativePath),
         `${key} should be forwarded to the language server`)
+    }
+  })
+
+  it('normalizes the main server settings and honors importer toggles', async () => {
+    const javaConfig = getJavaConfig('/virtual/jdk')
+    assert.equal(javaConfig.home, '/virtual/jdk')
+    assert.equal(javaConfig.jdt.ls.androidSupport.enabled, false)
+    assert.equal(javaConfig.jdt.ls.javac.enabled, false)
+    assert.equal(javaConfig.completion.matchCase, 'off')
+    assert.equal(javaConfig.implementationCodeLens, 'none')
+    assert.equal(javaConfig.project.outputPath, undefined)
+    assert.equal(javaConfig.project.sourcePaths, undefined)
+    assert.equal(getJavaServerMode(), ServerMode.standard)
+    assert.equal(typeof getJavaEncoding(), 'string')
+    assert.deepEqual(plain(getBuildFilePatterns()), [])
+
+    const configuration = workspace.getConfiguration()
+    try {
+      await configuration.update('java.import.maven.enabled', true, ConfigurationTarget.Global)
+      await configuration.update('java.import.gradle.enabled', true, ConfigurationTarget.Global)
+      assert.deepEqual(plain(getBuildFilePatterns()), ['**/pom.xml', '**/*.gradle', '**/*.gradle.kts'])
+    } finally {
+      await configuration.update('java.import.maven.enabled', undefined, ConfigurationTarget.Global)
+      await configuration.update('java.import.gradle.enabled', undefined, ConfigurationTarget.Global)
+    }
+  })
+
+  it('forwards live setting changes to the virtual server', async () => {
+    const configuration = workspace.getConfiguration()
+    try {
+      const expected = { settings: { java: { completion: { maxResults: 50 } } } }
+      const [, notification] = await executeAndWaitForNotification(
+        'workspace/didChangeConfiguration',
+        () => configuration.update('java.completion.maxResults', 50, ConfigurationTarget.Global),
+        expected,
+      )
+      assert.equal(notification.params?.settings?.java?.completion?.maxResults, 50)
+    } finally {
+      await configuration.update('java.completion.maxResults', undefined, ConfigurationTarget.Global)
     }
   })
 
@@ -160,9 +231,10 @@ describe('coc-java fast contracts', () => {
     await commands.executeCommand('java.project.import.command')
     await commands.executeCommand('java.project.addToSourcePath.command', commandUri)
     await commands.executeCommand('java.project.removeFromSourcePath.command', commandUri)
+    await commands.executeCommand('java.project.listSourcePaths.command')
     await commands.executeCommand('java.server.mode.switch', 'Standard', true)
 
-    const requests = api.$testServer.getState().requests
+    const requests = virtualServer.getState().requests
     assert.ok(requests.some(request => request.method === 'textDocument/documentSymbol'))
     assert.ok(requests.some(request => request.method === 'textDocument/definition'))
     for (const command of [
@@ -173,13 +245,66 @@ describe('coc-java fast contracts', () => {
       'java.project.import',
       'java.project.addToSourcePath',
       'java.project.removeFromSourcePath',
+      'java.project.listSourcePaths',
     ]) {
       assert.ok(requests.some(request => request.method === 'workspace/executeCommand'
         && request.params?.command === command), `${command} should reach the virtual server`)
     }
 
-    await commands.executeCommand('java.projectConfiguration.update', Uri.parse(uri))
-    const notification = await waitForNotification('java/projectConfigurationUpdate')
+    const [, notification] = await executeAndWaitForNotification('java/projectConfigurationUpdate', () => {
+      return commands.executeCommand('java.projectConfiguration.update', Uri.parse(uri))
+    })
     assert.deepEqual(plain(notification.params), { uri })
+  })
+
+  it('routes compile, project build, cleanup, and navigation requests', async () => {
+    const [compileResult, compileRequest] = await executeAndWaitForRequest('java/buildWorkspace', () => {
+      return commands.executeCommand<number>('java.workspace.compile', false)
+    })
+    assert.equal(compileResult, 1)
+    assert.equal(compileRequest.params, false)
+
+    const projectUri = Uri.parse('file:///virtual/project')
+    const [, buildRequest] = await executeAndWaitForRequest('java/buildProjects', () => {
+      return commands.executeCommand('java.project.build', projectUri, false)
+    })
+    assert.deepEqual(plain(buildRequest.params), {
+      identifiers: [{ uri: projectUri.toString() }],
+      isFullBuild: false,
+    })
+
+    const [, cleanupRequest] = await executeAndWaitForRequest('java/cleanup', () => {
+      return commands.executeCommand('java.action.doCleanup')
+    })
+    assert.equal(cleanupRequest.params?.uri, javaDocumentUri)
+
+    const [, navigationRequest] = await executeAndWaitForRequest('java/findLinks', () => {
+      return commands.executeCommand('java.action.navigateToSuperImplementation', Uri.parse(javaDocumentUri))
+    })
+    assert.equal(navigationRequest.params?.type, 'superImplementation')
+    assert.equal(navigationRequest.params?.position?.textDocument?.uri, javaDocumentUri)
+  })
+
+  it('uses project and hierarchy protocol commands for command-palette actions', async () => {
+    const [, projectRequest] = await executeAndWaitForRequest('workspace/executeCommand', () => {
+      return commands.executeCommand('java.project.createModuleInfo.command')
+    })
+    assert.equal(projectRequest.params?.command, 'java.project.getAll')
+
+    const after = virtualServer.getState().requests.length
+    const hierarchyRequest = virtualServer.waitForRequest('workspace/executeCommand', 5_000, after)
+    await commands.executeCommand('java.action.showTypeHierarchy', Uri.parse(javaDocumentUri))
+    const request = await hierarchyRequest
+    assert.equal(request.params?.command, 'java.navigate.openTypeHierarchy')
+  })
+
+  it('sends one notification for every selected project', async () => {
+    const uris = [Uri.parse('file:///virtual/one'), Uri.parse('file:///virtual/two')]
+    const [, notification] = await executeAndWaitForNotification('java/projectConfigurationsUpdate', () => {
+      return commands.executeCommand('java.projectConfiguration.update', uris)
+    })
+    assert.deepEqual(plain(notification.params), {
+      identifiers: uris.map(uri => ({ uri: uri.toString() })),
+    })
   })
 })

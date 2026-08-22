@@ -231,7 +231,7 @@ function prepareParams(requirements: RequirementsData, workspacePath, context: E
       directory = undefined
     }
   }
-  const serverHome = directory ? directory : path.resolve(__dirname, '../server')
+  const serverHome = directory ? directory : path.resolve(context.extensionPath, 'server')
   const launchersFound: Array<string> = globSync('**/plugins/org.eclipse.equinox.launcher_*.jar', { cwd: serverHome })
   if (launchersFound.length) {
     params.push('-jar'); params.push(path.resolve(serverHome, launchersFound[0]))
@@ -249,7 +249,7 @@ function prepareParams(requirements: RequirementsData, workspacePath, context: E
   params.push('-configuration')
   if (startedFromSources()) { // Dev Mode: keep the config.ini in the installation location
     console.log(`Starting jdt.ls ${isSyntaxServer ? '(syntax)' : '(standard)'} from vscode-java sources`)
-    params.push(path.resolve(__dirname, '../server', configDir))
+    params.push(path.resolve(serverHome, configDir))
   } else if (directory) {
     console.log(`Starting jdt.ls ${isSyntaxServer ? '(syntax)' : '(standard)'} from custom directory ${directory}`)
     params.push(path.resolve(directory, configDir))
@@ -326,7 +326,7 @@ function resolveConfiguration(context: ExtensionContext, configDir) {
   ensureExists(configuration)
   const configIniName = "config.ini"
   const configIni = path.resolve(configuration, configIniName)
-  const ini = path.resolve(__dirname, '../server', configDir, configIniName)
+  const ini = path.resolve(context.extensionPath, 'server', configDir, configIniName)
   if (!fs.existsSync(configIni)) {
     fs.copyFileSync(ini, configIni)
   } else {
