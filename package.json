@@ -19,7 +19,15 @@
   "bugs": "https://github.com/neoclide/coc-java/issues",
   "scripts": {
     "build": "node esbuild.js",
-    "prepare": "node esbuild.js"
+    "prepare": "node esbuild.js",
+    "lint": "tsc -p tsconfig.json",
+    "test": "npm run test:fast",
+    "test:fast": "node test/run-fast-tests.cjs --nvim \"test/contracts.test.ts\"",
+    "test:fast:nvim": "node test/run-fast-tests.cjs --nvim \"test/contracts.test.ts\"",
+    "test:fast:vim": "node test/run-fast-tests.cjs --vim \"test/contracts.test.ts\"",
+    "test:integration": "coc-test \"test/extension.test.ts\"",
+    "test:integration:nvim": "coc-test --nvim \"test/extension.test.ts\"",
+    "test:integration:vim": "coc-test --vim \"test/extension.test.ts\""
   },
   "activationEvents": [
     "onLanguage:java",
@@ -1271,19 +1279,33 @@
   },
   "author": "chemzqm@gmail.com",
   "license": "EPL-1.0",
+  "coc-test": {
+    "entryFile": "test-support/extension.cjs",
+    "user-settings": {
+      "java.server.launchMode": "Standard",
+      "java.transport": "stdio",
+      "java.configuration.detectJdks": false,
+      "java.import.maven.enabled": false,
+      "java.import.gradle.enabled": false
+    }
+  },
   "devDependencies": {
-    "coc.nvim": "^0.0.83-next.22",
-    "esbuild": "^0.25.0",
+    "@types/node": "^22.20",
+    "coc-test": "^0.1.9",
+    "coc.nvim": "^0.0.83-next.26",
+    "esbuild": "^0.28.2",
     "expand-home-dir": "^0.0.3",
     "fmtr": "^1.1.2",
     "fs-extra": "^8.1.0",
-    "glob": "^7.1.3",
+    "glob": "^13.0.6",
     "jdk-utils": "^0.5.1",
     "marked": "^4.0.12",
     "semver": "^7.3.5",
-    "typescript": "^5.5.4",
-    "uuid": "^7.0.3",
-    "vscode-languageserver-protocol": "^3.17.2"
+    "typescript": "^6.0.3",
+    "uuid": "^14.0.2",
+    "vscode-languageserver-protocol": "^3.17.5"
   },
-  "dependencies": {}
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
 }

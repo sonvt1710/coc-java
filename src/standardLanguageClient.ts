@@ -524,7 +524,7 @@ export class StandardLanguageClient {
               res = token ? await this.languageClient.sendRequest(BuildProjectRequest.type, params, token) :
                 await this.languageClient.sendRequest(BuildProjectRequest.type, params)
             } catch (error) {
-              if (error && error.code === -32800) { // Check if the request is cancelled.
+              if (error && typeof error === 'object' && 'code' in error && error.code === -32800) { // Check if the request is cancelled.
                 res = BuildWorkspaceStatus.cancelled
               }
               reject(error)
@@ -564,7 +564,7 @@ export class StandardLanguageClient {
               res = token ? await this.languageClient.sendRequest(CompileWorkspaceRequest.type, isFullCompile, token)
                 : await this.languageClient.sendRequest(CompileWorkspaceRequest.type, isFullCompile)
             } catch (error) {
-              if (error && error.code === -32800) { // Check if the request is cancelled.
+              if (error && typeof error === 'object' && 'code' in error && error.code === -32800) { // Check if the request is cancelled.
                 res = BuildWorkspaceStatus.cancelled
               } else {
                 reject(error)

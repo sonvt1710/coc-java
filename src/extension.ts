@@ -29,7 +29,7 @@ import { ACTIVE_BUILD_TOOL_STATE, cleanWorkspaceFileName, getImportMode, getJava
 import { StandardLanguageClient } from './standardLanguageClient'
 import { SyntaxLanguageClient } from './syntaxLanguageClient'
 import { addAutoDetectedJdks, convertToGlob, deleteDirectory, ensureExists, getBuildFilePatterns, getExclusionGlob, getInclusionPatternsFromNegatedExclusion, getJavaConfig, getJavaConfiguration, hasBuildToolConflicts, rangeIntersect, resolveActualCause } from './utils'
-import glob = require('glob')
+import { glob } from 'glob'
 
 const syntaxClient: SyntaxLanguageClient = new SyntaxLanguageClient()
 const standardClient: StandardLanguageClient = new StandardLanguageClient()
@@ -675,51 +675,53 @@ function openServerLogFile(workspacePath: string): Thenable<boolean> {
   return openLogFile(serverLogFile, 'Could not open Java Language Server log file')
 }
 
-function openRollingServerLogFile(workspacePath: string, filename: string): Thenable<boolean> {
-  return new Promise((resolve) => {
-    const dirname = path.join(workspacePath, '.metadata')
+async function openRollingServerLogFile(workspacePath: string, filename: string): Promise<boolean> {
+  const dirname = path.join(workspacePath, '.metadata')
 
-    // find out the newest one
-    glob(`${filename}-*`, { cwd: dirname }, (err: any, files: string[]) => {
-      if (!err && files.length > 0) {
-        files.sort()
-
-        const logFile = path.join(dirname, files[files.length - 1])
-        openLogFile(logFile, `Could not open Java Language Server log file ${filename}`).then((result) => resolve(result))
-      } else {
-        resolve(false)
-      }
-    })
-  })
+  // find out the newest one
+  let files: string[] = []
+  try {
+    files = await glob(`${filename}-*`, { cwd: dirname })
+  } catch (_err) {
+    return false
+  }
+  if (files.length > 0) {
+    files.sort()
+    const logFile = path.join(dirname, files[files.length - 1])
+    return openLogFile(logFile, `Could not open Java Language Server log file ${filename}`)
+  }
+  return false
 }
 
-function openClientLogFile(logFile: string): Thenable<boolean> {
-  return new Promise((resolve) => {
-    const filename = path.basename(logFile)
-    const dirname = path.dirname(logFile)
+async function openClientLogFile(logFile: string): Promise<boolean> {
+  const filename = path.basename(logFile)
+  const dirname = path.dirname(logFile)
 
-    // find out the newest one
-    glob(`${filename}.*`, { cwd: dirname }, (err: any, files: string[]) => {
-      if (!err && files.length > 0) {
-        files.sort((a, b) => {
-          const dateA = a.slice(11, 21), dateB = b.slice(11, 21)
-          if (dateA === dateB) {
-            if (a.length > 22 && b.length > 22) {
-              const extA = a.slice(22), extB = b.slice(22)
-              return parseInt(extA) - parseInt(extB)
-            } else {
-              return a.length - b.length
-            }
-          } else {
-            return dateA < dateB ? -1 : 1
-          }
-        })
-        logFile = path.join(dirname, files[files.length - 1])
+  // find out the newest one
+  let files: string[] = []
+  try {
+    files = await glob(`${filename}.*`, { cwd: dirname })
+  } catch (_err) {
+    // Keep the original behavior: opening the current log is still useful
+    // when the archive directory cannot be read.
+  }
+  if (files.length > 0) {
+    files.sort((a, b) => {
+      const dateA = a.slice(11, 21), dateB = b.slice(11, 21)
+      if (dateA === dateB) {
+        if (a.length > 22 && b.length > 22) {
+          const extA = a.slice(22), extB = b.slice(22)
+          return parseInt(extA) - parseInt(extB)
+        } else {
+          return a.length - b.length
+        }
+      } else {
+        return dateA < dateB ? -1 : 1
       }
-
-      openLogFile(logFile, 'Could not open Java extension log file').then((result) => resolve(result))
     })
-  })
+    logFile = path.join(dirname, files[files.length - 1])
+  }
+  return openLogFile(logFile, 'Could not open Java extension log file')
 }
 
 async function openLogs() {
@@ -968,16 +970,20 @@ async function cleanJavaWorkspaceStorage() {
 
   // find all folders of the form "redhat.java/jdt_ws/" and delete "redhat.java/"
   if (fs.existsSync(wsRoot)) {
-    new glob.Glob(`${wsRoot}/**/jdt_ws`, (_err: any, matches: string[]) => {
-      for (const javaWSCache of matches) {
-        const entry = path.dirname(javaWSCache)
-        const entryModTime = fs.statSync(entry).mtimeMs
-        if ((currTime - entryModTime) > limit) {
-          createLogger().info(`Removing workspace storage folder : ${entry}`)
-          deleteDirectory(entry)
-        }
+    let matches: string[]
+    try {
+      matches = await glob(`${wsRoot}/**/jdt_ws`)
+    } catch (_err) {
+      return
+    }
+    for (const javaWSCache of matches) {
+      const entry = path.dirname(javaWSCache)
+      const entryModTime = fs.statSync(entry).mtimeMs
+      if ((currTime - entryModTime) > limit) {
+        createLogger().info(`Removing workspace storage folder : ${entry}`)
+        deleteDirectory(entry)
       }
-    })
+    }
   }
 }
 

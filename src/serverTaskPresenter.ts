@@ -20,7 +20,7 @@ export namespace serverTaskPresenter {
       let loaded = await nvim.call('bufloaded', [bufnr])
       if (!loaded) bufnr = undefined
       if (bufnr) {
-        winid = await nvim.call('bufwinid', [bufnr])
+        winid = await nvim.call('bufwinid', [bufnr]) as number
       }
     }
     if (!bufnr) {
@@ -84,7 +84,7 @@ export class ActivationProgressNotification {
       cancellable: false,
     }, (progress: Progress<{ message?: string; increment?: number }>, _token) => {
       return new Promise<void>((resolve) => {
-        let interval: NodeJS.Timer
+        let interval: NodeJS.Timeout
         if (isProgressReportEnabled) {
           interval = setInterval(() => {
             const tasks = serverTasks.getHistory()

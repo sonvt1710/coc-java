@@ -97,7 +97,7 @@ export async function checkAndDownloadJRE(context: ExtensionContext): Promise<st
   try {
     url = getDownloadUrl()
   } catch (e) {
-    context.logger.error(`Unable to download JRE:`, e.message)
+    context.logger.error(`Unable to download JRE:`, e instanceof Error ? e.message : String(e))
     return undefined
   }
 

@@ -40,7 +40,7 @@ export class TypeHierarchyTree {
     this.api = {
       setInput: async input => {
         let id = await nvim.eval('get(w:,"cocViewId",v:null)')
-        if (!id) winid = await nvim.call('win_getid', [])
+        if (!id) winid = await nvim.call('win_getid', []) as number
         let symbol = await Promise.resolve(input.resolve())
         if (!symbol) return
         let treeView = window.createTreeView('types', {

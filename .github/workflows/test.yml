@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        editor:
+          - nvim
+          - vim
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install editors
+        run: sudo apt-get update && sudo apt-get install -y neovim vim
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:fast:${{ matrix.editor }}
+      - run: npm run test:integration:${{ matrix.editor }}

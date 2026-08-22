@@ -1,12 +1,13 @@
 'use strict'
 
-import { Executable, ExecutableOptions, ExtensionContext, StreamInfo, workspace } from 'coc.nvim'
+import { Executable, ExecutableOptions, ExtensionContext, StreamInfo, TransportKind, workspace } from 'coc.nvim'
 import * as fs from 'fs'
 import * as fse from 'fs-extra'
-import * as glob from 'glob'
+import { globSync } from 'glob'
 import * as net from 'net'
 import * as os from 'os'
 import * as path from 'path'
+import { generateRandomPipeName } from 'vscode-languageserver-protocol/node'
 import { createLogger } from './log'
 import { addLombokParam, isLombokSupportEnabled } from './lombokSupport'
 import { RequirementsData } from './requirements'
@@ -35,7 +36,9 @@ const DEPENDENCY_COLLECTOR_IMPL = '-Daether.dependencyCollector.impl=';
 const DEPENDENCY_COLLECTOR_IMPL_BF = 'bf';
 
 export function prepareExecutable(requirements: RequirementsData, workspacePath, javaConfig, context: ExtensionContext, isSyntaxServer: boolean): Executable {
-  const executable: Executable = Object.create(null)
+  // coc.nvim's runtime supports `transport`, although older coc.nvim typings
+  // don't expose the property on Executable.
+  const executable = Object.create(null) as Executable & { transport?: TransportKind }
   const options: ExecutableOptions = Object.create(null)
   options.env = Object.assign({ syntaxserver: isSyntaxServer }, process.env)
   if (os.platform() === 'win32') {
@@ -47,7 +50,24 @@ export function prepareExecutable(requirements: RequirementsData, workspacePath,
   }
   executable.options = options
   executable.command = path.resolve(`${requirements.tooling_jre}/bin/java`)
-  executable.args = prepareParams(requirements, javaConfig, workspacePath, context, isSyntaxServer)
+  executable.args = prepareParams(requirements, workspacePath, context, isSyntaxServer)
+  const transportKind = getJavaConfiguration().get('transport');
+
+  switch (transportKind) {
+    case 'stdio':
+      executable.transport = TransportKind.stdio;
+      break;
+    case 'pipe':
+    default:
+      executable.transport = TransportKind.pipe;
+      try {
+        generateRandomPipeName();
+      } catch (error) {
+        createLogger().warn(`Falling back to 'stdio' (from 'pipe') due to : ${error}`);
+        executable.transport = TransportKind.stdio;
+      }
+      break
+  }
 
   createLogger().info(`Starting Java server with: ${executable.command} ${executable.args.join(' ')}`)
   return executable
@@ -69,7 +89,7 @@ export function awaitServerConnection(port): Thenable<StreamInfo> {
   })
 }
 
-function prepareParams(requirements: RequirementsData, javaConfiguration, workspacePath, context: ExtensionContext, isSyntaxServer: boolean): string[] {
+function prepareParams(requirements: RequirementsData, workspacePath, context: ExtensionContext, isSyntaxServer: boolean): string[] {
   const params: string[] = []
   if (DEBUG) {
     const port = isSyntaxServer ? 1045 : 1044
@@ -212,7 +232,7 @@ function prepareParams(requirements: RequirementsData, javaConfiguration, worksp
     }
   }
   const serverHome = directory ? directory : path.resolve(__dirname, '../server')
-  const launchersFound: Array<string> = glob.sync('**/plugins/org.eclipse.equinox.launcher_*.jar', { cwd: serverHome })
+  const launchersFound: Array<string> = globSync('**/plugins/org.eclipse.equinox.launcher_*.jar', { cwd: serverHome })
   if (launchersFound.length) {
     params.push('-jar'); params.push(path.resolve(serverHome, launchersFound[0]))
   } else {
@@ -359,7 +379,7 @@ export function parseVMargs(params: any[], vmargsLine: string) {
 export function removeEquinoxFragmentOnDarwinX64(context: ExtensionContext) {
   // https://github.com/redhat-developer/vscode-java/issues/3484
   const extensionPath = context.extensionPath
-  const matches = new glob.GlobSync(`${extensionPath}/server/plugins/org.eclipse.equinox.launcher.cocoa.macosx.x86_64*.jar`).found
+  const matches = globSync(`${extensionPath}/server/plugins/org.eclipse.equinox.launcher.cocoa.macosx.x86_64*.jar`)
   for (const fragment of matches) {
     fse.removeSync(fragment)
     createLogger().info(`Removing Equinox launcher fragment : ${fragment}`)

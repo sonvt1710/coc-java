@@ -1,6 +1,7 @@
 # coc-java
 
 [![License](https://img.shields.io/github/license/neoclide/coc-java?style=for-the-badge&logo=eclipse)](https://github.com/neoclide/coc-java/blob/master/LICENSE)
+[![CI](https://github.com/neoclide/coc-java/actions/workflows/test.yml/badge.svg)](https://github.com/neoclide/coc-java/actions/workflows/test.yml)
 
 Fork of [vscode-java](https://github.com/redhat-developer/vscode-java) to
 works with [coc.nvim](https://github.com/neoclide/coc.nvim).

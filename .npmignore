@@ -1,4 +1,6 @@
 src
+test
+test-support
 tsconfig.json
 *.map
 yarn.lock
