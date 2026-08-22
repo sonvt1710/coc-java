@@ -3,14 +3,14 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { commands, ConfigurationTarget, snippetManager, SymbolKind, TreeItemCollapsibleState, Uri, window, workspace } from 'coc.nvim'
+import { commands, ConfigurationTarget, snippetManager, SymbolKind, TransportKind, TreeItemCollapsibleState, Uri, window, workspace } from 'coc.nvim'
 import packageJson from '../package.json'
 import { apiManager } from '../src/apiManager.ts'
 import type { ExtensionAPI } from '../src/extension.api.ts'
 import { getJavaEncoding, getJavaServerMode, ServerMode } from '../src/settings.ts'
 import { getBuildFilePatterns, getJavaConfig } from '../src/utils.ts'
 import { createTypeBodySnippet } from '../src/fileEventHandler.ts'
-import { addAppCDSParams, addJavacParams, getPredefinedVariablesEnv, getUnicodeLocaleEnv, prepareParams } from '../src/javaServerStarter.ts'
+import { addAppCDSParams, addJavacParams, getJavaExecutable, getPredefinedVariablesEnv, getUnicodeLocaleEnv, prepareExecutable, prepareParams } from '../src/javaServerStarter.ts'
 import { sanitizeCommandLinksInHover } from '../src/hoverAction.ts'
 import { isCompatibleLombokVersion, parseLombokVersion, parseLombokVersionNumber } from '../src/lombokSupport.ts'
 import { isCompatibleRuntime } from '../src/javaRuntimes.ts'
@@ -624,6 +624,43 @@ describe('coc-java fast contracts', () => {
     const java17Params: string[] = []
     addAppCDSParams(java17Params, 'on', fixtureDirectory, '1.42.0', 17, '')
     assert.equal(java17Params.length, 0, 'AppCDS should stay disabled on the supported Java 17 fallback')
+  })
+
+  it('uses direct Java launches and a windowless executable for Windows pipes', async () => {
+    const javaHome = path.join(fixtureDirectory, 'Program Files', 'Java', 'jdk-23')
+    const binDirectory = path.join(javaHome, 'bin')
+    await fs.mkdir(binDirectory, { recursive: true })
+    await fs.writeFile(path.join(binDirectory, 'javaw.exe'), '')
+
+    assert.equal(
+      getJavaExecutable(javaHome, TransportKind.pipe, 'win32'),
+      path.join(binDirectory, 'javaw.exe'),
+    )
+    assert.equal(
+      getJavaExecutable(javaHome, TransportKind.stdio, 'win32'),
+      path.join(binDirectory, 'java.exe'),
+    )
+    assert.equal(
+      getJavaExecutable(path.join(fixtureDirectory, 'jdk-without-javaw'), TransportKind.pipe, 'win32'),
+      path.join(fixtureDirectory, 'jdk-without-javaw', 'bin', 'java.exe'),
+    )
+
+    const state = { get: () => undefined, update: async () => undefined }
+    const context = {
+      extensionPath: path.resolve(process.cwd()),
+      storagePath: path.join(fixtureDirectory, 'storage'),
+      globalState: state,
+      workspaceState: state,
+      asAbsolutePath: (relativePath: string) => path.resolve(process.cwd(), relativePath),
+    } as any
+    const executable = prepareExecutable({
+      tooling_jre: javaHome,
+      tooling_jre_version: 23,
+      java_home: javaHome,
+      java_version: 23,
+    }, path.join(fixtureDirectory, 'workspace'), {}, context, false)
+    assert.equal(executable.options?.shell, false)
+    assert.equal(executable.command, path.join(binDirectory, 'java'))
   })
 
   it('parses Lombok versions without crashing on malformed jar names', () => {

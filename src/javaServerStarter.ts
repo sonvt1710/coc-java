@@ -44,6 +44,9 @@ export function prepareExecutable(requirements: RequirementsData, workspacePath,
   // don't expose the property on Executable.
   const executable = Object.create(null) as Executable & { transport?: TransportKind }
   const options: ExecutableOptions = Object.create(null)
+  // The command is an absolute Java executable path. Avoid a Windows shell so
+  // spaces in the JDK path and JVM arguments are passed through unchanged.
+  options.shell = false
   options.env = Object.assign(
     { syntaxserver: isSyntaxServer },
     process.env,
@@ -58,7 +61,6 @@ export function prepareExecutable(requirements: RequirementsData, workspacePath,
     }
   }
   executable.options = options
-  executable.command = path.resolve(`${requirements.tooling_jre}/bin/java`)
   executable.args = prepareParams(requirements, workspacePath, context, isSyntaxServer)
   const transportKind = getJavaConfiguration().get('transport');
 
@@ -78,8 +80,25 @@ export function prepareExecutable(requirements: RequirementsData, workspacePath,
       break
   }
 
+  executable.command = getJavaExecutable(requirements.tooling_jre, executable.transport as TransportKind)
+
   createLogger().info(`Starting Java server with: ${executable.command} ${executable.args.join(' ')}`)
   return executable
+}
+
+export function getJavaExecutable(
+  javaHome: string,
+  transport: TransportKind,
+  platform: NodeJS.Platform = os.platform(),
+): string {
+  // Pipe transport does not use the JVM's standard streams. javaw prevents a
+  // detached JDT LS process from creating a console window on Windows.
+  if (platform === 'win32' && transport === TransportKind.pipe) {
+    const windowlessExecutable = path.resolve(javaHome, 'bin', 'javaw.exe')
+    if (fse.existsSync(windowlessExecutable)) return windowlessExecutable
+  }
+  const executable = platform === 'win32' ? 'java.exe' : 'java'
+  return path.resolve(javaHome, 'bin', executable)
 }
 
 /** Values understood by JDT LS when settings contain VS Code-style variables. */
