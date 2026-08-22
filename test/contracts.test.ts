@@ -268,8 +268,22 @@ describe('coc-java fast contracts', () => {
     assert.equal(downloadCalls, 0)
     assert.equal(requirements.tooling_jre, javaHome)
     assert.equal(requirements.java_home, javaHome)
-    assert.equal(getServerConfigurationDirectory(false, 'android'), 'config_linux')
-    assert.equal(getServerConfigurationDirectory(true, 'android'), 'config_ss_linux')
+  })
+
+  it('selects JDT LS configurations for the host architecture', async () => {
+    assert.equal(getServerConfigurationDirectory(false, 'android', 'arm64'), 'config_linux_arm')
+    assert.equal(getServerConfigurationDirectory(true, 'android', 'arm64'), 'config_ss_linux_arm')
+    assert.equal(getServerConfigurationDirectory(false, 'darwin', 'arm64'), 'config_mac_arm')
+    assert.equal(getServerConfigurationDirectory(true, 'darwin', 'arm64'), 'config_ss_mac_arm')
+    assert.equal(getServerConfigurationDirectory(false, 'darwin', 'x64'), 'config_mac')
+    assert.equal(getServerConfigurationDirectory(false, 'linux', 'x64'), 'config_linux')
+
+    const macArmConfiguration = await fs.readFile(
+      path.resolve('server', 'config_mac_arm', 'config.ini'),
+      'utf8',
+    )
+    assert.match(macArmConfiguration, /launcher\.cocoa\.macosx\.aarch64/)
+    assert.doesNotMatch(macArmConfiguration, /launcher\.cocoa\.macosx\.x86_64/)
   })
 
   it('explains how to install the required JDK when Termux has none', async () => {

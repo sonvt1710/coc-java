@@ -105,14 +105,17 @@ export function getJavaExecutable(
 export function getServerConfigurationDirectory(
   isSyntaxServer: boolean,
   platform: NodeJS.Platform = process.platform,
+  architecture: string = process.arch,
 ): string {
+  const architectureSuffix = architecture === 'arm64' ? '_arm' : ''
+  const serverPrefix = isSyntaxServer ? 'config_ss_' : 'config_'
   if (platform === 'darwin') {
-    return isSyntaxServer ? 'config_ss_mac' : 'config_mac'
+    return `${serverPrefix}mac${architectureSuffix}`
   }
   // Node reports `android` in Termux, while JDT LS uses its Linux
   // configuration there (see eclipse.jdt.ls#3742).
   if (platform === 'linux' || platform === 'android') {
-    return isSyntaxServer ? 'config_ss_linux' : 'config_linux'
+    return `${serverPrefix}linux${architectureSuffix}`
   }
   return isSyntaxServer ? 'config_ss_win' : 'config_win'
 }
@@ -373,7 +376,13 @@ export function prepareParams(requirements: RequirementsData, workspacePath, con
   }
 
   // select configuration directory according to OS
-  const configDir = getServerConfigurationDirectory(isSyntaxServer)
+  let configDir = getServerConfigurationDirectory(isSyntaxServer)
+  // Custom JDT LS installations may use the generic config directory even
+  // on arm64. Prefer the bundled architecture-specific configuration, then
+  // preserve compatibility with those installations.
+  if (!fs.existsSync(path.resolve(serverHome, configDir))) {
+    configDir = getServerConfigurationDirectory(isSyntaxServer, process.platform, 'x64')
+  }
   params.push('-configuration')
   if (startedFromSources()) { // Dev Mode: keep the config.ini in the installation location
     console.log(`Starting jdt.ls ${isSyntaxServer ? '(syntax)' : '(standard)'} from vscode-java sources`)
