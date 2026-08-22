@@ -100,7 +100,7 @@ The default runtime will be used when you open standalone Java files.
 - Type Hierarchy (`:CocCommand java.action.showTypeHierarchy`)
 - Share indexes (enabled by configuration `java.sharedIndexes.enabled`)
 
-See the [changelog](CHANGELOG.md) for the latest release.
+See the [changelog](history.md) for the latest release.
 
 ## Available commands
 
