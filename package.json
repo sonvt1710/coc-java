@@ -118,6 +118,16 @@
           "description": "Specifies extra VM arguments used to launch the Java Language Server. Eg. use `-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx2G -Xms100m -Xlog:disable` to optimize memory usage with the parallel garbage collector",
           "scope": "machine-overridable"
         },
+        "java.transport": {
+          "type": "string",
+          "enum": [
+            "pipe",
+            "stdio"
+          ],
+          "default": "pipe",
+          "description": "Transport used to communicate with the Java Language Server. Use 'stdio' when the default pipe transport cannot establish a connection.",
+          "scope": "machine-overridable"
+        },
         "java.errors.incompleteClasspath.severity": {
           "type": [
             "string"

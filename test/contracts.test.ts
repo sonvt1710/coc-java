@@ -164,11 +164,16 @@ describe('coc-java fast contracts', () => {
   it('loads every contributed Java setting and forwards it during initialization', () => {
     const properties = packageJson.contributes.configuration.properties as Record<string, ConfigurationSchema>
     const entries = Object.entries(properties)
-    assert.equal(entries.length, 133, 'update this contract when settings are intentionally added or removed')
+    assert.equal(entries.length, 134, 'update this contract when settings are intentionally added or removed')
+
+    const transport = properties['java.transport']
+    assert.equal(transport?.default, 'pipe')
+    assert.deepEqual(transport?.enum, ['pipe', 'stdio'])
 
     const javaSettings = virtualServer.getState().initializeParams?.initializationOptions?.settings?.java
     assert.ok(javaSettings, 'the virtual server should capture Java initialization settings')
     assert.equal(javaSettings.jdt.ls.kotlinSupport.enabled, true)
+    assert.equal(javaSettings.transport, 'stdio', 'the configured client transport should be forwarded')
     assert.equal(javaSettings.inlayHints.formatParameters.enabled, false)
     assert.equal(javaSettings.search.scope, 'all')
     assert.equal(
