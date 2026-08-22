@@ -53,6 +53,7 @@ class VirtualLanguageServer {
     this.notifications = []
     this.buildStatus = BUILD_SUCCEEDED
     this.projectUris = []
+    this.completionSelectionPending = false
     this._requestWaiters = []
     this._notificationWaiters = []
     this._statusTimer = undefined
@@ -244,7 +245,7 @@ class VirtualLanguageServer {
       return {
         capabilities: {
           textDocumentSync: { openClose: true, change: 1, save: { includeText: false } },
-          completionProvider: { resolveProvider: false, triggerCharacters: ['.'] },
+          completionProvider: { resolveProvider: true, triggerCharacters: ['.'] },
           definitionProvider: true,
           documentSymbolProvider: true,
           hoverProvider: true,
@@ -399,7 +400,47 @@ class VirtualLanguageServer {
 
     connection.onRequest('textDocument/completion', params => {
       this._recordRequest('textDocument/completion', params)
+      if (this.completionSelectionPending) {
+        throw new Error('A new completion request arrived before completion selection finished')
+      }
+      if (params?.textDocument?.uri?.endsWith('/PostfixTarget.java')) {
+        return {
+          isIncomplete: false,
+          items: [{
+            label: 'var',
+            kind: 15,
+            sortText: '999999999',
+            insertText: '${field:newType(inner_expression)} ${1:var:newName(inner_expression)} = ${inner_expression};${0}',
+            insertTextFormat: 2,
+            command: {
+              title: '',
+              command: 'java.completion.onDidSelect',
+              arguments: ['1', '0'],
+            },
+            data: { rid: '1', pid: '0' },
+          }],
+        }
+      }
       return { isIncomplete: false, items: [] }
+    })
+
+    connection.onRequest('completionItem/resolve', item => {
+      this._recordRequest('completionItem/resolve', item)
+      if (item?.label !== 'var' || !item?.insertText?.includes('inner_expression')) return item
+      const replacementRange = {
+        start: { line: 2, character: 4 },
+        end: { line: 2, character: 20 },
+      }
+      return {
+        ...item,
+        detail: 'Creates a new variable',
+        textEdit: {
+          range: replacementRange,
+          newText: 'String ${1:string} = new String();${0}',
+        },
+        additionalTextEdits: [{ range: replacementRange, newText: '' }],
+        data: undefined,
+      }
     })
 
     connection.onRequest('textDocument/codeAction', params => {
@@ -530,6 +571,14 @@ class VirtualLanguageServer {
         return undefined
       case 'java.getFullyQualifiedName':
         return 'com.example.Greeter'
+      case 'java.completion.onDidSelect':
+        this.completionSelectionPending = true
+        return new Promise(resolve => {
+          setTimeout(() => {
+            this.completionSelectionPending = false
+            resolve(undefined)
+          }, 75)
+        })
       default:
         return undefined
     }

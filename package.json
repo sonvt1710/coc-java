@@ -551,6 +551,12 @@
           "markdownDescription": "Enable/disable postfix completion support. `#editor.snippetSuggestions#` can be used to customize how postfix snippets are sorted.",
           "scope": "window"
         },
+        "java.completion.lazyResolveTextEdit.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "[Experimental] Enable/disable lazily resolving text edits for code completion.",
+          "scope": "window"
+        },
         "java.completion.matchCase": {
           "type": "string",
           "enum": [

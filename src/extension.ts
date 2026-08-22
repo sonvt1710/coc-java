@@ -13,6 +13,7 @@ import { BuildFileSelector, cleanupWorkspaceState, PICKED_BUILD_FILES } from './
 import { ClientErrorHandler } from './clientErrorHandler'
 import { Commands } from './commands'
 import { ClientStatus, ExtensionAPI } from './extension.api'
+import { JAVA_COMPLETION_ON_DID_SELECT, normalizeJavaCompletionItem, prepareJavaCompletionItems } from './completion'
 import * as fileEventHandler from './fileEventHandler'
 import { getSharedIndexCache, HEAP_DUMP_LOCATION, prepareExecutable, removeEquinoxFragmentOnDarwinX64 } from './javaServerStarter'
 import { createLogger, initializeLogFile } from './log'
@@ -150,6 +151,7 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
       const isDebugModeByClientPort = !!process.env['SYNTAXLS_CLIENT_PORT'] || !!process.env['JDTLS_CLIENT_PORT']
       const requireSyntaxServer = (serverMode !== ServerMode.standard) && (!isDebugModeByClientPort || !!process.env['SYNTAXLS_CLIENT_PORT'])
       let requireStandardServer = (serverMode !== ServerMode.lightWeight) && (!isDebugModeByClientPort || !!process.env['JDTLS_CLIENT_PORT'])
+      let pendingCompletionSelection: Promise<void> | undefined
 
       // Options to control the language client
       const clientOptions: LanguageClientOptions = {
@@ -209,6 +211,15 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
           provideSelectionRanges: (document, positions, token, next) => {
             if (events.insertMode) return undefined
             return next(document, positions, token)
+          },
+          provideCompletionItem: async (document, position, completionContext, token, next) => {
+            await pendingCompletionSelection
+            const result = await next(document, position, completionContext, token)
+            return prepareJavaCompletionItems(result)
+          },
+          resolveCompletionItem: async (item, token, next) => {
+            const resolved = await next(item, token)
+            return normalizeJavaCompletionItem(resolved ?? item)
           },
           // https://github.com/redhat-developer/vscode-java/issues/2130
           // include all diagnostics for the current line in the CodeActionContext params for the performance reason
@@ -318,14 +329,30 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
           command,
           arguments: commandArgs
         }
-        const client = await getStandardLanguageClient()
-        if (!client) {
-          createLogger().warn(`Cannot execute Java workspace command '${command}' because the standard language client is not initialized`)
-          return
+        const execute = async (): Promise<unknown> => {
+          const client = await getStandardLanguageClient()
+          if (!client) {
+            createLogger().warn(`Cannot execute Java workspace command '${command}' because the standard language client is not initialized`)
+            return
+          }
+          return token
+            ? client.sendRequest(ExecuteCommandRequest.type as any, params, token)
+            : client.sendRequest(ExecuteCommandRequest.type as any, params)
         }
-        return token
-          ? client.sendRequest(ExecuteCommandRequest.type as any, params, token)
-          : client.sendRequest(ExecuteCommandRequest.type as any, params)
+        if (command !== JAVA_COMPLETION_ON_DID_SELECT) return execute()
+
+        const previous = pendingCompletionSelection
+        const current = (async () => {
+          await previous
+          await execute()
+        })().catch(error => {
+          createLogger().warn(`Failed to notify the Java language server about a selected completion: ${String(error)}`)
+        })
+        pendingCompletionSelection = current
+        void current.then(() => {
+          if (pendingCompletionSelection === current) pendingCompletionSelection = undefined
+        })
+        return current
       }, null, true))
 
       context.subscriptions.push(commands.registerCommand(Commands.COPY_FULLY_QUALIFIED_NAME, async () => {

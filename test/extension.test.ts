@@ -3,8 +3,10 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { commands, workspace, type Document } from 'coc.nvim'
+import { commands, services, TextEdit, workspace, type Document } from 'coc.nvim'
+import { CompletionRequest, CompletionResolveRequest } from 'vscode-languageserver-protocol'
 import { apiManager } from '../src/apiManager.ts'
+import { normalizeJavaCompletionItem, prepareJavaCompletionItems } from '../src/completion.ts'
 import type { ExtensionAPI } from '../src/extension.api.ts'
 import { extendedOutlineTree } from '../src/outline/extendedOutlineTree.ts'
 
@@ -14,6 +16,7 @@ let api: ExtensionAPI
 let fixtureDirectory: string
 let greeterFile: string
 let enumCompletionFile: string
+let postfixCompletionFile: string
 let javaDocumentUri: string
 
 async function withTimeout<T>(promise: Promise<T>, timeout: number, message: string): Promise<T> {
@@ -77,6 +80,15 @@ before(async () => {
     '  boolean differs() {',
     '    var a = FooBar.FOO;',
     '    return a != ',
+    '  }',
+    '}',
+    '',
+  ].join('\n'))
+  postfixCompletionFile = path.join(fixtureDirectory, 'PostfixCompletion.java')
+  await fs.writeFile(postfixCompletionFile, [
+    'class PostfixCompletion {',
+    '  void run() {',
+    '    new String()',
     '  }',
     '}',
     '',
@@ -199,6 +211,53 @@ describe('coc-java integration', () => {
           await new Promise(resolve => setTimeout(resolve, 50))
         }
       })(), 5_000, `enum completion inserted ${JSON.stringify(await workspace.nvim.call('getline', [9]))}`)
+    } finally {
+      await workspace.nvim.command('stopinsert')
+      await workspace.nvim.call('coc#pum#close', ['cancel'])
+      await workspace.nvim.command(`silent! edit! ${escapedGreeterFile}`)
+    }
+  })
+
+  it('resolves the var postfix completion as a whole-expression text edit', async () => {
+    const escapedPostfixFile = await workspace.nvim.call('fnameescape', [postfixCompletionFile]) as string
+    const escapedGreeterFile = await workspace.nvim.call('fnameescape', [greeterFile]) as string
+    try {
+      await workspace.nvim.command(`edit ${escapedPostfixFile}`)
+      const bufnr = await workspace.nvim.eval('bufnr("%")') as number
+      const document = await waitForDocument(bufnr)
+      await workspace.nvim.command('setfiletype java')
+      await waitForLanguageId(document)
+      await workspace.nvim.call('setline', [3, '    new String().var'])
+      await document.synchronize()
+
+      const client = services.getService('java').client
+      assert.ok(client)
+      const result = await client.sendRequest(CompletionRequest.type, {
+        textDocument: { uri: document.uri },
+        position: { line: 2, character: 20 },
+        context: { triggerKind: 1 },
+      })
+      const preparedResult = prepareJavaCompletionItems(result)
+      const items = Array.isArray(preparedResult) ? preparedResult : preparedResult?.items ?? []
+      const rawItem = items.find(item => item.label === 'var')
+      assert.ok(rawItem, `expected var postfix completion, received ${JSON.stringify(items.map(item => item.label))}`)
+      assert.equal(rawItem.data?.word, 'var')
+      const resolvedItem = normalizeJavaCompletionItem(
+        await client.sendRequest(CompletionResolveRequest.type, rawItem),
+      )
+      assert.ok(TextEdit.is(resolvedItem.textEdit))
+      assert.deepEqual(resolvedItem.textEdit.range, {
+        start: { line: 2, character: 4 },
+        end: { line: 2, character: 20 },
+      })
+      assert.equal(resolvedItem.textEdit.newText, 'String ${1:string} = new String();${0}')
+      assert.equal(resolvedItem.additionalTextEdits?.some(edit => {
+        return edit.newText === ''
+          && edit.range.start.line === 2
+          && edit.range.start.character === 4
+          && edit.range.end.line === 2
+          && edit.range.end.character === 20
+      }), false)
     } finally {
       await workspace.nvim.command('stopinsert')
       await workspace.nvim.call('coc#pum#close', ['cancel'])

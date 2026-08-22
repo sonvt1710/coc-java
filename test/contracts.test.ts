@@ -61,6 +61,7 @@ let javaDocumentUri: string
 let inheritedJavaFile: string
 let emptyJavaUri: string
 let snippetJavaFile: string
+let postfixJavaFile: string
 
 function plain<T>(value: T): T {
   return value === undefined ? value : JSON.parse(JSON.stringify(value))
@@ -151,6 +152,15 @@ before(async () => {
     '}',
     '',
   ].join('\n'))
+  postfixJavaFile = path.join(fixtureDirectory, 'PostfixTarget.java')
+  await fs.writeFile(postfixJavaFile, [
+    'class PostfixTarget {',
+    '  void run() {',
+    '    new String().var',
+    '  }',
+    '}',
+    '',
+  ].join('\n'))
   const document = await workspace.openTextDocument(Uri.file(javaFile))
   await workspace.jumpTo(document.uri)
   await workspace.nvim.command('setfiletype java')
@@ -199,7 +209,7 @@ describe('coc-java fast contracts', () => {
   it('loads every contributed Java setting and forwards it during initialization', () => {
     const properties = packageJson.contributes.configuration.properties as Record<string, ConfigurationSchema>
     const entries = Object.entries(properties)
-    assert.equal(entries.length, 134, 'update this contract when settings are intentionally added or removed')
+    assert.equal(entries.length, 135, 'update this contract when settings are intentionally added or removed')
 
     const transport = properties['java.transport']
     assert.equal(transport?.default, 'pipe')
@@ -208,6 +218,7 @@ describe('coc-java fast contracts', () => {
     const javaSettings = virtualServer.getState().initializeParams?.initializationOptions?.settings?.java
     assert.ok(javaSettings, 'the virtual server should capture Java initialization settings')
     assert.equal(javaSettings.jdt.ls.kotlinSupport.enabled, true)
+    assert.equal(javaSettings.completion.lazyResolveTextEdit.enabled, true)
     assert.equal(javaSettings.transport, 'stdio', 'the configured client transport should be forwarded')
     assert.equal(javaSettings.inlayHints.formatParameters.enabled, false)
     assert.equal(javaSettings.search.scope, 'all')
@@ -552,6 +563,63 @@ describe('coc-java fast contracts', () => {
       ])
       assert.equal(snippetManager.isActivated(bufnr), true)
     } finally {
+      snippetManager.cancel()
+      await workspace.jumpTo(javaDocumentUri)
+    }
+  })
+
+  it('applies a resolved Java postfix completion across the whole expression', async () => {
+    const document = await workspace.openTextDocument(Uri.file(postfixJavaFile))
+    await workspace.jumpTo(document.uri)
+    await workspace.nvim.command('setfiletype java')
+    const requestOffset = virtualServer.getState().requests.length
+    const completionSelectionRequest = virtualServer.waitForRequest('workspace/executeCommand', 5_000, requestOffset)
+    try {
+      await workspace.nvim.call('cursor', [3, 20])
+      await workspace.nvim.command('startinsert!')
+      await withTimeout((async () => {
+        while (!String(await workspace.nvim.call('mode')).startsWith('i')) {
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+      })(), 5_000, 'editor did not enter insert mode')
+      await commands.executeCommand('editor.action.triggerSuggest', 'java')
+      await withTimeout((async () => {
+        while (await workspace.nvim.call('coc#pum#visible') !== 1) {
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+      })(), 5_000, 'postfix completion menu did not become visible')
+
+      const pumWinid = await workspace.nvim.call('coc#pum#winid') as number
+      const words = await workspace.nvim.call('getwinvar', [pumWinid, 'words', []]) as string[]
+      const index = words.findIndex(word => word === 'var')
+      assert.notEqual(index, -1, `expected var in the completion menu, received ${JSON.stringify(words)}`)
+      await workspace.nvim.call('coc#pum#select', [index, 1, 1])
+      await withTimeout((async () => {
+        while (await workspace.nvim.call('getline', [3]) !== '    String string = new String();') {
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+      })(), 5_000, `postfix completion inserted ${JSON.stringify(await workspace.nvim.call('getline', [3]))}`)
+
+      const requests = virtualServer.getState().requests.slice(requestOffset)
+      assert.ok(requests.some(request => request.method === 'textDocument/completion'))
+      assert.ok(requests.some(request => request.method === 'completionItem/resolve'))
+      const selectionRequest = await completionSelectionRequest
+      assert.deepEqual(selectionRequest.params, {
+        command: 'java.completion.onDidSelect',
+        arguments: ['1', '0'],
+      })
+      const completionCount = requests.filter(request => request.method === 'textDocument/completion').length
+      await commands.executeCommand('editor.action.triggerSuggest', 'java')
+      await withTimeout((async () => {
+        while (virtualServer.getState().requests
+          .slice(requestOffset)
+          .filter(request => request.method === 'textDocument/completion').length <= completionCount) {
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+      })(), 5_000, 'next completion request did not wait for completion selection')
+    } finally {
+      await workspace.nvim.command('stopinsert')
+      await workspace.nvim.call('coc#pum#close', ['cancel'])
       snippetManager.cancel()
       await workspace.jumpTo(javaDocumentUri)
     }
