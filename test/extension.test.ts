@@ -12,6 +12,8 @@ const SERVER_TIMEOUT = 180_000
 
 let api: ExtensionAPI
 let fixtureDirectory: string
+let greeterFile: string
+let enumCompletionFile: string
 let javaDocumentUri: string
 
 async function withTimeout<T>(promise: Promise<T>, timeout: number, message: string): Promise<T> {
@@ -50,8 +52,8 @@ before(async () => {
   await withTimeout(api.serverReady(), SERVER_TIMEOUT, 'Java language server did not become ready')
 
   fixtureDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-java-test-'))
-  const javaFile = path.join(fixtureDirectory, 'Greeter.java')
-  await fs.writeFile(javaFile, [
+  greeterFile = path.join(fixtureDirectory, 'Greeter.java')
+  await fs.writeFile(greeterFile, [
     'public class Greeter {',
     '  public String greet(String name) {',
     '    return "Hello, " + name;',
@@ -64,8 +66,23 @@ before(async () => {
     '}',
     '',
   ].join('\n'))
+  enumCompletionFile = path.join(fixtureDirectory, 'EnumCompletion.java')
+  await fs.writeFile(enumCompletionFile, [
+    'enum FooBar {',
+    '  FOO,',
+    '  BAR,',
+    '}',
+    '',
+    'class EnumCompletion {',
+    '  boolean differs() {',
+    '    var a = FooBar.FOO;',
+    '    return a != ',
+    '  }',
+    '}',
+    '',
+  ].join('\n'))
 
-  const escapedFile = await workspace.nvim.call('fnameescape', [javaFile]) as string
+  const escapedFile = await workspace.nvim.call('fnameescape', [greeterFile]) as string
   await workspace.nvim.command(`edit ${escapedFile}`)
   const bufnr = await workspace.nvim.eval('bufnr("%")') as number
   const document = await waitForDocument(bufnr)
@@ -151,6 +168,41 @@ describe('coc-java integration', () => {
     } finally {
       await workspace.nvim.command('stopinsert')
       await workspace.nvim.command('silent! undo')
+    }
+  })
+
+  it('inserts the enum type qualifier for enum constant completions', async () => {
+    const escapedEnumFile = await workspace.nvim.call('fnameescape', [enumCompletionFile]) as string
+    const escapedGreeterFile = await workspace.nvim.call('fnameescape', [greeterFile]) as string
+    try {
+      await workspace.nvim.command(`edit ${escapedEnumFile}`)
+      const bufnr = await workspace.nvim.eval('bufnr("%")') as number
+      const document = await waitForDocument(bufnr)
+      await workspace.nvim.command('setfiletype java')
+      await waitForLanguageId(document)
+      await workspace.nvim.call('cursor', [9, 16])
+      await workspace.nvim.command('startinsert!')
+      await commands.executeCommand('editor.action.triggerSuggest')
+      await withTimeout((async () => {
+        while (await workspace.nvim.call('coc#pum#visible') !== 1) {
+          await new Promise(resolve => setTimeout(resolve, 50))
+        }
+      })(), 15_000, 'enum completion menu did not become visible')
+
+      const pumWinid = await workspace.nvim.call('coc#pum#winid') as number
+      const words = await workspace.nvim.call('getwinvar', [pumWinid, 'words', []]) as string[]
+      const index = words.findIndex(word => word === 'BAR')
+      assert.notEqual(index, -1, `expected BAR in the completion menu, received ${JSON.stringify(words)}`)
+      await workspace.nvim.call('coc#pum#select', [index, 1, 1])
+      await withTimeout((async () => {
+        while (await workspace.nvim.call('getline', [9]) !== '    return a != FooBar.BAR') {
+          await new Promise(resolve => setTimeout(resolve, 50))
+        }
+      })(), 5_000, `enum completion inserted ${JSON.stringify(await workspace.nvim.call('getline', [9]))}`)
+    } finally {
+      await workspace.nvim.command('stopinsert')
+      await workspace.nvim.call('coc#pum#close', ['cancel'])
+      await workspace.nvim.command(`silent! edit! ${escapedGreeterFile}`)
     }
   })
 
