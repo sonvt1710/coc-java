@@ -343,6 +343,54 @@ describe('coc-java fast contracts', () => {
     }
   })
 
+  it('resolves a Maven multi-module build from its parent POM', async () => {
+    const mavenRoot = path.join(fixtureDirectory, 'maven-multi-module')
+    const moduleRoot = path.join(mavenRoot, 'app')
+    const javaFile = path.join(moduleRoot, 'src', 'main', 'java', 'App.java')
+    await fs.mkdir(path.dirname(javaFile), { recursive: true })
+    await fs.writeFile(path.join(mavenRoot, 'pom.xml'), [
+      '<project>',
+      '  <modelVersion>4.0.0</modelVersion>',
+      '  <groupId>example</groupId>',
+      '  <artifactId>parent</artifactId>',
+      '  <version>1.0.0</version>',
+      '  <packaging>pom</packaging>',
+      '  <modules><module>app</module></modules>',
+      '</project>',
+      '',
+    ].join('\n'))
+    await fs.writeFile(path.join(moduleRoot, 'pom.xml'), [
+      '<project>',
+      '  <modelVersion>4.0.0</modelVersion>',
+      '  <parent>',
+      '    <groupId>example</groupId>',
+      '    <artifactId>parent</artifactId>',
+      '    <version>1.0.0</version>',
+      '  </parent>',
+      '  <artifactId>app</artifactId>',
+      '</project>',
+      '',
+    ].join('\n'))
+    await fs.writeFile(javaFile, 'class App {}\n')
+
+    const document = await workspace.openTextDocument(Uri.file(javaFile))
+    try {
+      await workspace.jumpTo(document.uri)
+      await workspace.nvim.command('setfiletype java')
+      const startedAt = Date.now()
+      let folder = workspace.getWorkspaceFolder(document.uri)
+      while (!folder && Date.now() - startedAt < 2_000) {
+        await new Promise(resolve => setTimeout(resolve, 25))
+        folder = workspace.getWorkspaceFolder(document.uri)
+      }
+      assert.ok(folder, 'the nested Maven source should resolve a workspace folder')
+      assert.equal(path.resolve(Uri.parse(folder.uri).fsPath), mavenRoot)
+    } finally {
+      await workspace.jumpTo(Uri.parse(javaDocumentUri))
+      await workspace.nvim.call('CocActionAsync', ['removeWorkspaceFolder', mavenRoot])
+    }
+  })
+
   it('loads every contributed Java setting and forwards it during initialization', () => {
     const properties = packageJson.contributes.configuration.properties as Record<string, ConfigurationSchema>
     const entries = Object.entries(properties)
