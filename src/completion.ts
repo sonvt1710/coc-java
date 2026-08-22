@@ -10,8 +10,25 @@ function samePosition(
   return left.line === right.line && left.character === right.character
 }
 
-function isJavaPostfixCompletion(item: CompletionItem): boolean {
+export function isJavaPostfixCompletion(item: CompletionItem): boolean {
   return typeof item.insertText === 'string' && item.insertText.includes('inner_expression')
+}
+
+export async function resolveJavaPostfixCompletionItems(
+  result: CompletionItem[] | CompletionList | null | undefined,
+  resolveItem: (item: CompletionItem) => Promise<CompletionItem | null | undefined>,
+): Promise<CompletionItem[] | CompletionList | null | undefined> {
+  if (!result) return result
+  const items = Array.isArray(result) ? result : result.items
+  await Promise.all(items.map(async item => {
+    if (!isJavaPostfixCompletion(item)) return
+    if (!item.textEdit) {
+      const resolved = await resolveItem(item)
+      if (resolved) Object.assign(item, resolved)
+    }
+    normalizeJavaCompletionItem(item)
+  }))
+  return result
 }
 
 /** Keep JDT's internal template variables out of the completion word shown by Coc. */

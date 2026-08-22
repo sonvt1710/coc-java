@@ -6,6 +6,7 @@ import { after, before, describe, it } from 'node:test'
 import { commands, ConfigurationTarget, snippetManager, SymbolKind, TransportKind, TreeItemCollapsibleState, Uri, window, workspace } from 'coc.nvim'
 import packageJson from '../package.json'
 import { apiManager } from '../src/apiManager.ts'
+import { resolveJavaPostfixCompletionItems } from '../src/completion.ts'
 import type { ExtensionAPI } from '../src/extension.api.ts'
 import { getJavaEncoding, getJavaServerMode, ServerMode } from '../src/settings.ts'
 import { getBuildFilePatterns, getJavaConfig } from '../src/utils.ts'
@@ -704,12 +705,42 @@ describe('coc-java fast contracts', () => {
     }
   })
 
+  it('eagerly resolves only unresolved Java postfix completion items', async () => {
+    const ordinary = { label: 'length', insertText: 'length' }
+    const resolved = {
+      label: 'if',
+      insertText: '${inner_expression}.if',
+      textEdit: {
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+        newText: 'if (value) {\n  ${0}\n}',
+      },
+    }
+    const pending = { label: 'var', insertText: '${inner_expression}.var' }
+    const calls: string[] = []
+    const items = [ordinary, resolved, pending]
+
+    const result = await resolveJavaPostfixCompletionItems(items, async item => {
+      calls.push(item.label)
+      return {
+        ...item,
+        textEdit: {
+          range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+          newText: 'String ${1:value} = expression;${0}',
+        },
+      }
+    })
+
+    assert.equal(result, items)
+    assert.deepEqual(calls, ['var'])
+    assert.ok(pending.textEdit)
+    assert.equal(await resolveJavaPostfixCompletionItems(null, async () => undefined), null)
+  })
+
   it('applies a resolved Java postfix completion across the whole expression', async () => {
     const document = await workspace.openTextDocument(Uri.file(postfixJavaFile))
     await workspace.jumpTo(document.uri)
     await workspace.nvim.command('setfiletype java')
     const requestOffset = virtualServer.getState().requests.length
-    const completionSelectionRequest = virtualServer.waitForRequest('workspace/executeCommand', 5_000, requestOffset)
     try {
       await workspace.nvim.call('cursor', [3, 20])
       await workspace.nvim.command('startinsert!')
@@ -738,8 +769,9 @@ describe('coc-java fast contracts', () => {
 
       const requests = virtualServer.getState().requests.slice(requestOffset)
       assert.ok(requests.some(request => request.method === 'textDocument/completion'))
-      assert.ok(requests.some(request => request.method === 'completionItem/resolve'))
-      const selectionRequest = await completionSelectionRequest
+      assert.equal(requests.filter(request => request.method === 'completionItem/resolve').length, 1,
+        'postfix completion should be resolved eagerly and only once')
+      const selectionRequest = await virtualServer.waitForRequest('workspace/executeCommand', 5_000, requestOffset)
       assert.deepEqual(selectionRequest.params, {
         command: 'java.completion.onDidSelect',
         arguments: ['1', '0'],

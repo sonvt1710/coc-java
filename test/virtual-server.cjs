@@ -424,9 +424,10 @@ class VirtualLanguageServer {
       return { isIncomplete: false, items: [] }
     })
 
-    connection.onRequest('completionItem/resolve', item => {
+    connection.onRequest('completionItem/resolve', async item => {
       this._recordRequest('completionItem/resolve', item)
       if (item?.label !== 'var' || !item?.insertText?.includes('inner_expression')) return item
+      await new Promise(resolve => setTimeout(resolve, 75))
       const replacementRange = {
         start: { line: 2, character: 4 },
         end: { line: 2, character: 20 },

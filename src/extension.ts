@@ -7,13 +7,13 @@ import * as fse from 'fs-extra'
 import * as os from 'os'
 import * as path from 'path'
 import * as semver from 'semver'
-import { CodeActionParams, CodeActionRequest, DidChangeConfigurationNotification, ExecuteCommandParams, ExecuteCommandRequest } from 'vscode-languageserver-protocol'
+import { CodeActionParams, CodeActionRequest, CompletionResolveRequest, DidChangeConfigurationNotification, ExecuteCommandParams, ExecuteCommandRequest } from 'vscode-languageserver-protocol'
 import { apiManager } from './apiManager'
 import { BuildFileSelector, cleanupWorkspaceState, PICKED_BUILD_FILES } from './buildFilesSelector'
 import { ClientErrorHandler } from './clientErrorHandler'
 import { Commands } from './commands'
 import { ClientStatus, ExtensionAPI } from './extension.api'
-import { JAVA_COMPLETION_ON_DID_SELECT, normalizeJavaCompletionItem, prepareJavaCompletionItems } from './completion'
+import { isJavaPostfixCompletion, JAVA_COMPLETION_ON_DID_SELECT, normalizeJavaCompletionItem, prepareJavaCompletionItems, resolveJavaPostfixCompletionItems } from './completion'
 import * as fileEventHandler from './fileEventHandler'
 import { getSharedIndexCache, HEAP_DUMP_LOCATION, prepareExecutable, removeEquinoxFragmentOnDarwinX64 } from './javaServerStarter'
 import { createLogger, initializeLogFile } from './log'
@@ -215,11 +215,27 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
           provideCompletionItem: async (document, position, completionContext, token, next) => {
             await pendingCompletionSelection
             const result = await next(document, position, completionContext, token)
+            try {
+              await resolveJavaPostfixCompletionItems(result, item => {
+                return standardClient.getClient().sendRequest(CompletionResolveRequest.type, item, token)
+              })
+            } catch (error) {
+              if (!token.isCancellationRequested) {
+                createLogger().warn(`Failed to eagerly resolve a Java postfix completion: ${String(error)}`)
+              }
+            }
             return prepareJavaCompletionItems(result)
           },
           resolveCompletionItem: async (item, token, next) => {
+            if (isJavaPostfixCompletion(item) && item.textEdit) {
+              normalizeJavaCompletionItem(item)
+              prepareJavaCompletionItems([item])
+              return item
+            }
             const resolved = await next(item, token)
-            return normalizeJavaCompletionItem(resolved ?? item)
+            const normalized = normalizeJavaCompletionItem(resolved ?? item)
+            prepareJavaCompletionItems([normalized])
+            return normalized
           },
           // https://github.com/redhat-developer/vscode-java/issues/2130
           // include all diagnostics for the current line in the CodeActionContext params for the performance reason
