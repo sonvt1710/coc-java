@@ -27,6 +27,7 @@ import { JavaRuntimes } from './javaRuntimes'
 import { runtimeStatusBarProvider } from './runtimeStatusBarProvider'
 import { serverStatusBarProvider } from './serverStatusBarProvider'
 import { ACTIVE_BUILD_TOOL_STATE, cleanWorkspaceFileName, getImportMode, getJavaServerMode, ImportMode, onConfigurationChange, ServerMode } from './settings'
+import { prepareSnippetCodeAction } from './snippetEdit'
 import { StandardLanguageClient } from './standardLanguageClient'
 import { SyntaxLanguageClient } from './syntaxLanguageClient'
 import { addAutoDetectedJdks, convertToGlob, deleteDirectory, ensureExists, getBuildFilePatterns, getExclusionGlob, getInclusionPatternsFromNegatedExclusion, getJavaConfig, getJavaConfiguration, hasBuildToolConflicts, rangeIntersect, resolveActualCause } from './utils'
@@ -194,6 +195,7 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
             extractInterfaceSupport: true,
             advancedUpgradeGradleSupport: true,
             executeClientCommandSupport: true,
+            snippetEditSupport: true,
           },
           triggerFiles,
         },
@@ -248,6 +250,10 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
             }, (error) => {
               return client.handleFailedRequest(CodeActionRequest.type as any, token, error, [])
             }) as any
+          },
+          resolveCodeAction: async (item, token, next) => {
+            const resolved = await next(item, token)
+            return resolved ? prepareSnippetCodeAction(resolved) : resolved
           }
         },
         revealOutputChannelOn: RevealOutputChannelOn.Never,

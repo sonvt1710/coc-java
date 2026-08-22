@@ -19,6 +19,7 @@ import { awaitServerConnection, prepareExecutable } from "./javaServerStarter"
 import { createLogger } from "./log"
 import { checkLombokDependency } from "./lombokSupport"
 import { markdownPreviewProvider } from "./markdownPreviewProvider"
+import { extendedOutlineTree } from "./outline/extendedOutlineTree"
 import { collectBuildFilePattern, onExtensionChange } from "./plugin"
 import { pomCodeActionMetadata, PomCodeActionProvider } from "./pom/pomCodeActionProvider"
 import { ActionableNotification, BuildProjectParams, BuildProjectRequest, BuildWorkspaceStatus, CompileWorkspaceRequest, EventNotification, EventType, ExecuteClientCommandRequest, FeatureStatus, FindLinks, GradleCompatibilityInfo, LinkLocation, ProgressReportNotification, ServerNotification, SourceAttachmentAttribute, SourceAttachmentRequest, SourceAttachmentResult, SourceInvalidatedEvent, StatusNotification, UpgradeGradleWrapperInfo } from "./protocol"
@@ -597,6 +598,8 @@ export class StandardLanguageClient {
         jdtEventEmitter.fire(classFileUri)
         return true
       }))
+
+      extendedOutlineTree.initialize(context, this.languageClient)
 
       buildPath.registerCommands(context)
       sourceAction.registerCommands(this.languageClient, context)

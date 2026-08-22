@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { commands, ConfigurationTarget, Uri, workspace } from 'coc.nvim'
+import { commands, ConfigurationTarget, snippetManager, SymbolKind, TreeItemCollapsibleState, Uri, workspace } from 'coc.nvim'
 import packageJson from '../package.json'
 import { apiManager } from '../src/apiManager.ts'
 import type { ExtensionAPI } from '../src/extension.api.ts'
@@ -14,7 +14,9 @@ import { addAppCDSParams, addJavacParams, getPredefinedVariablesEnv, getUnicodeL
 import { sanitizeCommandLinksInHover } from '../src/hoverAction.ts'
 import { isCompatibleLombokVersion, parseLombokVersion, parseLombokVersionNumber } from '../src/lombokSupport.ts'
 import { isCompatibleRuntime } from '../src/javaRuntimes.ts'
+import { createExtendedOutlineNodes, extendedOutlineTree, ExtendedOutlineTreeDataProvider } from '../src/outline/extendedOutlineTree.ts'
 import { requestMoveWithConfirmation } from '../src/refactorAction.ts'
+import { escapeSnippetLiterals, prepareSnippetCodeAction } from '../src/snippetEdit.ts'
 
 const SERVER_TIMEOUT = 10_000
 
@@ -52,6 +54,9 @@ let api: ExtensionAPI
 let virtualServer: VirtualServer
 let fixtureDirectory: string
 let javaDocumentUri: string
+let inheritedJavaFile: string
+let emptyJavaUri: string
+let snippetJavaFile: string
 
 function plain<T>(value: T): T {
   return value === undefined ? value : JSON.parse(JSON.stringify(value))
@@ -88,6 +93,17 @@ async function executeAndWaitForRequest<T>(method: string, execute: () => Promis
   return [result, await pending]
 }
 
+async function waitForCurrentFile(expectedFile: string, timeout = 5_000): Promise<void> {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeout) {
+    const currentFile = await workspace.nvim.call('expand', ['%:p']) as string
+    if (path.resolve(currentFile) === path.resolve(expectedFile)) return
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  const currentFile = await workspace.nvim.call('expand', ['%:p']) as string
+  throw new Error(`expected current file ${expectedFile}, got ${currentFile}`)
+}
+
 async function executeAndWaitForNotification<T>(
   method: string,
   execute: () => Promise<T>,
@@ -110,6 +126,27 @@ before(async () => {
   fixtureDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-java-contracts-'))
   const javaFile = path.join(fixtureDirectory, 'Greeter.java')
   await fs.writeFile(javaFile, 'public class Greeter {}\n')
+  inheritedJavaFile = path.join(fixtureDirectory, 'BaseGreeter.java')
+  await fs.writeFile(inheritedJavaFile, [
+    'public class BaseGreeter {',
+    '',
+    '',
+    '  public String greet() { return "Hello"; }',
+    '}',
+    '',
+  ].join('\n'))
+  const emptyJavaFile = path.join(fixtureDirectory, 'Empty.java')
+  await fs.writeFile(emptyJavaFile, 'public class Empty {}\n')
+  emptyJavaUri = Uri.file(emptyJavaFile).toString()
+  snippetJavaFile = path.join(fixtureDirectory, 'SnippetTarget.java')
+  await fs.writeFile(snippetJavaFile, [
+    'class SnippetTarget {',
+    '  void run() {',
+    '    value',
+    '  }',
+    '}',
+    '',
+  ].join('\n'))
   const document = await workspace.openTextDocument(Uri.file(javaFile))
   await workspace.jumpTo(document.uri)
   await workspace.nvim.command('setfiletype java')
@@ -135,6 +172,10 @@ describe('coc-java fast contracts', () => {
     assert.equal(javaSettings.search.scope, 'all')
     assert.equal(
       virtualServer.getState().initializeParams?.initializationOptions?.extendedClientCapabilities?.moveRefactoringConfirmationSupport,
+      true,
+    )
+    assert.equal(
+      virtualServer.getState().initializeParams?.initializationOptions?.extendedClientCapabilities?.snippetEditSupport,
       true,
     )
 
@@ -201,7 +242,7 @@ describe('coc-java fast contracts', () => {
 
   it('registers every contributed command plus the protocol bridge commands', () => {
     const contributed = packageJson.contributes.commands as Array<{ command: string }>
-    assert.equal(contributed.length, 30, 'update this contract when public commands are intentionally changed')
+    assert.equal(contributed.length, 31, 'update this contract when public commands are intentionally changed')
     for (const { command } of contributed) {
       assert.equal(commands.has(command), true, `${command} should be registered`)
     }
@@ -215,10 +256,64 @@ describe('coc-java fast contracts', () => {
       '_java.workspace.path',
       '_java.reloadBundles.command',
       '_java.projectConfiguration.saveAndUpdate',
+      'java.action.extendedOutline.open',
     ]) {
       assert.equal(commands.has(command), true, `${command} should be registered`)
     }
     assert.equal(commands.has('java.runtimes.add'), true)
+  })
+
+  it('keeps inherited members for both classes and interfaces in the extended outline', () => {
+    const range = { start: { line: 0, character: 0 }, end: { line: 1, character: 0 } }
+    const symbols = [SymbolKind.Class, SymbolKind.Interface, SymbolKind.Enum].map((kind, index) => ({
+      name: `Root${index}`,
+      detail: `root ${index}`,
+      kind,
+      range,
+      selectionRange: range,
+      uri: `file:///Root${index}.java`,
+      children: [{
+        name: `member${index}`,
+        detail: `member ${index}`,
+        kind: SymbolKind.Method,
+        range,
+        selectionRange: range,
+        uri: `file:///Inherited${index}.java`,
+      }],
+    }))
+    const nodes = createExtendedOutlineNodes(symbols)
+    assert.equal(nodes[0].children.length, 1)
+    assert.equal(nodes[1].children.length, 1, 'interface members are the v1.41 upstream regression fix')
+    assert.equal(nodes[2].children.length, 0, 'match the upstream class/interface-only layout')
+
+    const provider = new ExtendedOutlineTreeDataProvider(nodes)
+    assert.equal(provider.getParent(nodes[1].children[0]), nodes[1])
+    const rootItem = provider.getTreeItem(nodes[1])
+    assert.equal(rootItem.collapsibleState, TreeItemCollapsibleState.Expanded)
+    assert.equal(rootItem.description, 'root 1')
+    assert.equal(provider.getTreeItem(nodes[1].children[0]).command?.command, 'java.action.extendedOutline.open')
+  })
+
+  it('escapes Java literals without changing snippet placeholders or escaped commas', () => {
+    assert.equal(
+      escapeSnippetLiterals('$HOME C:\\logs ${1:name}'),
+      '\\$HOME C:\\\\logs ${1:name}',
+    )
+    const choice = '${1|HashMap<Integer\\,Integer>,Map<Integer\\,Integer>|}'
+    assert.equal(escapeSnippetLiterals(choice), choice)
+
+    const action = {
+      edit: {
+        documentChanges: [{
+          textDocument: { uri: 'file:///Snippet.java', version: null },
+          edits: [{ snippet: { kind: 'snippet', value: '$value ${1:name}' } }],
+        }],
+      },
+    }
+    assert.equal(
+      (prepareSnippetCodeAction(action).edit.documentChanges[0].edits[0].snippet.value),
+      '\\$value ${1:name}',
+    )
   })
 
   it('matches detected JDKs to supported execution environments', () => {
@@ -328,6 +423,85 @@ describe('coc-java fast contracts', () => {
     const params = JSON.parse(request.params?.arguments?.[0])
     assert.equal(params.textDocument.uri, javaDocumentUri)
     assert.equal(await workspace.nvim.call('getreg', ['+']), 'com.example.Greeter')
+  })
+
+  it('renders the extended outline and opens an inherited member from the tree', async () => {
+    const sourceWindowId = await workspace.nvim.call('win_getid', []) as number
+    const [, request] = await executeAndWaitForRequest('java/extendedDocumentSymbol', () => {
+      return commands.executeCommand('java.action.showExtendedOutline')
+    })
+    assert.equal(request.params?.textDocument?.uri, javaDocumentUri)
+    try {
+      assert.equal(await workspace.nvim.eval('get(w:, "cocViewId", "")'), 'javaExtendedOutline')
+      const lines = await workspace.nvim.call('getline', [1, '$']) as string[]
+      assert.ok(lines.some(line => line.includes('ExtendedGreeter')))
+      assert.ok(lines.some(line => line.includes('GreeterContract')))
+      assert.equal(lines.filter(line => line.includes('greet')).length, 2)
+
+      const [, reopenedRequest] = await executeAndWaitForRequest('java/extendedDocumentSymbol', () => {
+        return commands.executeCommand('java.action.showExtendedOutline', Uri.parse(javaDocumentUri))
+      })
+      assert.equal(reopenedRequest.params?.textDocument?.uri, javaDocumentUri)
+      assert.equal(await workspace.nvim.eval('get(w:, "cocViewId", "")'), 'javaExtendedOutline')
+
+      const reopenedLines = await workspace.nvim.call('getline', [1, '$']) as string[]
+      const inheritedMemberLine = reopenedLines.findIndex(line => line.includes('greet')) + 1
+      assert.ok(inheritedMemberLine > 0, 'expected an inherited member in the rendered tree')
+      await workspace.nvim.call('cursor', [inheritedMemberLine, 1])
+      await workspace.nvim.input('<cr>')
+      await waitForCurrentFile(inheritedJavaFile)
+      assert.equal(await workspace.nvim.call('line', ['.']), 4)
+      assert.equal(await workspace.nvim.call('win_getid', []), sourceWindowId)
+      assert.notEqual(await workspace.nvim.eval('get(w:, "cocViewId", "")'), 'javaExtendedOutline')
+    } finally {
+      await extendedOutlineTree.close()
+      await workspace.jumpTo(javaDocumentUri)
+    }
+  })
+
+  it('keeps the editor focused when the server returns no extended outline symbols', async () => {
+    const sourceWindowId = await workspace.nvim.call('win_getid', []) as number
+    const [, request] = await executeAndWaitForRequest('java/extendedDocumentSymbol', () => {
+      return commands.executeCommand('java.action.showExtendedOutline', Uri.parse(emptyJavaUri))
+    })
+    assert.equal(request.params?.textDocument?.uri, emptyJavaUri)
+    assert.equal(await workspace.nvim.call('win_getid', []), sourceWindowId)
+    const treeWindowId = await workspace.nvim.call('coc#window#find', ['cocViewId', 'javaExtendedOutline']) as number
+    assert.ok(treeWindowId <= 0, 'an empty response should not create a TreeView')
+  })
+
+  it('applies a resolved code-action SnippetTextEdit with coc.nvim placeholders', async () => {
+    const document = await workspace.openTextDocument(Uri.file(snippetJavaFile))
+    await workspace.jumpTo(document.uri)
+    await workspace.nvim.command('setfiletype java')
+    const bufnr = await workspace.nvim.call('bufnr', ['%']) as number
+    const requestOffset = virtualServer.getState().requests.length
+    const codeActionRequest = virtualServer.waitForRequest('textDocument/codeAction', 5_000, requestOffset)
+    const resolveRequest = virtualServer.waitForRequest('codeAction/resolve', 5_000, requestOffset)
+    try {
+      await withTimeout(
+        workspace.nvim.call('CocAction', ['codeAction', null, 'Insert Java snippet']) as Promise<unknown>,
+        5_000,
+        'snippet code action did not complete',
+      )
+      assert.equal((await codeActionRequest).params?.textDocument?.uri, document.uri)
+      assert.equal((await resolveRequest).params?.data?.uri, document.uri)
+      assert.deepEqual(await workspace.nvim.call('getline', [1, '$']), [
+        'class SnippetTarget {',
+        '  void run() {',
+        '    if (ready) {',
+        '      HashMap<Integer,Integer> values = null;',
+        '      System.out.println("$HOME\\\\logs");',
+        '      ',
+        '    }',
+        '  }',
+        '}',
+      ])
+      assert.equal(snippetManager.isActivated(bufnr), true)
+    } finally {
+      snippetManager.cancel()
+      await workspace.jumpTo(javaDocumentUri)
+    }
   })
 
   it('adapts portable upstream startup and template behavior', async () => {

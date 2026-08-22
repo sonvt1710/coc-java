@@ -333,4 +333,10 @@ export namespace Commands {
 
   export const COPY_FULLY_QUALIFIED_NAME = 'java.action.copyFullyQualifiedName'
   export const GET_FULLY_QUALIFIED_NAME = 'java.getFullyQualifiedName'
+
+  /**
+   * Show the current Java document and its inherited members.
+   */
+  export const SHOW_EXTENDED_OUTLINE = 'java.action.showExtendedOutline'
+  export const OPEN_EXTENDED_OUTLINE_LOCATION = 'java.action.extendedOutline.open'
 }

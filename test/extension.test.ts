@@ -6,6 +6,7 @@ import { after, before, describe, it } from 'node:test'
 import { commands, workspace, type Document } from 'coc.nvim'
 import { apiManager } from '../src/apiManager.ts'
 import type { ExtensionAPI } from '../src/extension.api.ts'
+import { extendedOutlineTree } from '../src/outline/extendedOutlineTree.ts'
 
 const SERVER_TIMEOUT = 180_000
 
@@ -95,6 +96,7 @@ describe('coc-java integration', () => {
       'java.clean.workspace',
       'java.project.import.command',
       'java.action.doCleanup',
+      'java.action.showExtendedOutline',
     ]) {
       assert.equal(commands.has(command), true, `${command} should be registered`)
     }
@@ -113,5 +115,21 @@ describe('coc-java integration', () => {
       greeter.children?.some(symbol => symbol.name === 'greet' || symbol.name.startsWith('greet(')),
       'expected the greet method symbol',
     )
+  })
+
+  it('renders an extended outline from the real Java language server', async () => {
+    try {
+      await withTimeout(
+        commands.executeCommand('java.action.showExtendedOutline'),
+        30_000,
+        'extended outline request did not complete',
+      )
+      assert.equal(await workspace.nvim.eval('get(w:, "cocViewId", "")'), 'javaExtendedOutline')
+      const lines = await workspace.nvim.call('getline', [1, '$']) as string[]
+      assert.ok(lines.some(line => line.includes('Greeter')))
+      assert.ok(lines.some(line => line.includes('greet')))
+    } finally {
+      await extendedOutlineTree.close()
+    }
   })
 })

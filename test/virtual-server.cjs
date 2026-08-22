@@ -246,7 +246,7 @@ class VirtualLanguageServer {
           referencesProvider: true,
           renameProvider: true,
           workspaceSymbolProvider: true,
-          codeActionProvider: true,
+          codeActionProvider: { resolveProvider: true },
           executeCommandProvider: { commands: [] },
         },
         serverInfo: { name: 'coc-java virtual server', version: '1.0.0' },
@@ -331,6 +331,49 @@ class VirtualLanguageServer {
       }]
     })
 
+    connection.onRequest('java/extendedDocumentSymbol', params => {
+      this._recordRequest('java/extendedDocumentSymbol', params)
+      const sourceUri = params?.textDocument?.uri || 'file:///virtual/Greeter.java'
+      if (sourceUri.endsWith('/Empty.java')) return []
+      const inheritedUri = sourceUri.replace(/Greeter\.java$/, 'BaseGreeter.java')
+      return [
+        {
+          name: 'ExtendedGreeter',
+          kind: 5,
+          detail: 'class ExtendedGreeter extends Greeter',
+          range: range(0, 0),
+          selectionRange: range(0, 6),
+          uri: sourceUri,
+          children: [{
+            name: 'greet',
+            kind: 6,
+            detail: 'public String greet()',
+            range: range(3, 2),
+            selectionRange: range(3, 16),
+            uri: inheritedUri,
+            children: [],
+          }],
+        },
+        {
+          name: 'GreeterContract',
+          kind: 11,
+          detail: 'interface GreeterContract',
+          range: range(0, 0),
+          selectionRange: range(0, 10),
+          uri: 'file:///virtual/GreeterContract.java',
+          children: [{
+            name: 'greet',
+            kind: 6,
+            detail: 'String greet()',
+            range: range(2, 2),
+            selectionRange: range(2, 8),
+            uri: inheritedUri,
+            children: [],
+          }],
+        },
+      ]
+    })
+
     connection.onRequest('textDocument/definition', params => {
       this._recordRequest('textDocument/definition', params)
       return [{
@@ -356,7 +399,42 @@ class VirtualLanguageServer {
 
     connection.onRequest('textDocument/codeAction', params => {
       this._recordRequest('textDocument/codeAction', params)
-      return []
+      const uri = params?.textDocument?.uri
+      if (!uri?.endsWith('/SnippetTarget.java')) return []
+      return [{
+        title: 'Insert Java snippet',
+        kind: 'quickfix',
+        data: { uri },
+      }]
+    })
+
+    connection.onRequest('codeAction/resolve', action => {
+      this._recordRequest('codeAction/resolve', action)
+      const uri = action?.data?.uri
+      return {
+        ...action,
+        edit: {
+          documentChanges: [{
+            textDocument: { uri, version: null },
+            edits: [{
+              range: {
+                start: { line: 2, character: 4 },
+                end: { line: 2, character: 9 },
+              },
+              snippet: {
+                kind: 'snippet',
+                value: [
+                  'if (${1:ready}) {',
+                  '      ${2|HashMap<Integer\\,Integer>,Map<Integer\\,Integer>|} values = null;',
+                  '      System.out.println("$HOME\\\\logs");',
+                  '      ${0}',
+                  '    }',
+                ].join('\n'),
+              },
+            }],
+          }],
+        },
+      }
     })
 
     connection.onRequest('workspace/symbol', params => {

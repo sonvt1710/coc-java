@@ -1429,6 +1429,11 @@
         "command": "java.action.copyFullyQualifiedName",
         "title": "Copy Fully Qualified Name",
         "category": "Java"
+      },
+      {
+        "command": "java.action.showExtendedOutline",
+        "title": "Open Extended Outline",
+        "category": "Java"
       }
     ]
   },
