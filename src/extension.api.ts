@@ -72,7 +72,7 @@ export enum ClientStatus {
   stopping = "Stopping",
 }
 
-export const extensionApiVersion = '0.9'
+export const extensionApiVersion = '0.10'
 
 export interface ExtensionAPI {
   readonly apiVersion: string
@@ -125,6 +125,12 @@ export interface ExtensionAPI {
    * @since extension version 1.7.0
    */
   readonly serverReady: () => Promise<boolean>
+  /**
+   * Resolves after the standard language server sends its first status notification,
+   * before project import necessarily reaches ServiceReady.
+   * @since API version 0.10
+   */
+  readonly serverRunning?: () => Promise<boolean>
   /**
    * Allow 3rd party trace handler to track the language client & server error events.
    *

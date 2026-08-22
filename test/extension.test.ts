@@ -77,12 +77,13 @@ after(async () => {
 
 describe('coc-java integration', () => {
   it('exposes a started standard-mode API', () => {
-    assert.equal(api.apiVersion, '0.9')
+    assert.equal(api.apiVersion, '0.10')
     assert.equal(api.serverMode, 'Standard')
     assert.equal(api.status, 'Started')
     assert.ok(api.javaRequirement.tooling_jre_version >= 17)
     assert.equal(typeof api.getDocumentSymbols, 'function')
     assert.equal(typeof api.goToDefinition, 'function')
+    assert.equal(typeof api.serverRunning, 'function')
   })
 
   it('registers the primary user commands', () => {

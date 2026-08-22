@@ -1,6 +1,6 @@
 'use strict'
 
-import { commands, ExtensionContext, FileCreateEvent, FileWillRenameEvent, LanguageClient, snippetManager, SnippetString, TextDocument, Uri, workspace } from 'coc.nvim'
+import { commands, ExtensionContext, FileCreateEvent, FileWillRenameEvent, LanguageClient, snippetManager, SnippetString, TextDocument, Uri, window, workspace } from 'coc.nvim'
 import stringInterpolate from 'fmtr'
 import { lstatSync } from 'fs-extra'
 import { userInfo } from 'os'
@@ -9,8 +9,15 @@ import { ListCommandResult } from './buildpath'
 import { Commands } from './commands'
 import { WillRenameFiles } from './protocol'
 import { getJavaConfiguration } from './utils'
+import { apiManager } from './apiManager'
+import { createLogger } from './log'
 
 let serverReady: boolean = false
+
+export const BRACE_POSITION_KEY = 'org.eclipse.jdt.core.formatter.brace_position_for_type_declaration'
+const END_OF_LINE = 'end_of_line'
+const NEXT_LINE = 'next_line'
+const NEXT_LINE_SHIFTED = 'next_line_shifted'
 
 export function setServerStatus(ready: boolean) {
   serverReady = ready
@@ -24,9 +31,22 @@ export function registerFileEventHandlers(client: LanguageClient, context: Exten
   if (workspace.onWillRenameFiles) {
     context.subscriptions.push(workspace.onWillRenameFiles(getWillRenameHandler(client)))
   }
+
+  apiManager.getApiInstance().serverReady().then(() => {
+    const document = window.activeTextEditor?.document
+    if (document && document.textDocument.getText().trim().length === 0) {
+      setServerStatus(true)
+      void handleNewJavaFiles({ files: [Uri.parse(document.uri)] }).catch(error => {
+        createLogger().warn(`Failed to create the initial Java file template: ${String(error)}`)
+      })
+    }
+  })
 }
 
 async function handleNewJavaFiles(e: FileCreateEvent) {
+  if (!getJavaConfiguration().get<boolean>('templates.newFile.enabled', true)) {
+    return
+  }
   const emptyFiles: Uri[] = []
   const textDocuments: TextDocument[] = []
   for (const uri of e.files) {
@@ -73,6 +93,24 @@ async function handleNewJavaFiles(e: FileCreateEvent) {
       const isPackageInfo = typeName === 'package-info'
       const isModuleInfo = typeName === 'module-info'
       const date = new Date()
+      const editorConfiguration = workspace.getConfiguration('editor')
+      const insertSpaces = editorConfiguration.get<boolean>('insertSpaces', true)
+      const tabSize = editorConfiguration.get<number>('tabSize', 4)
+      const indent = insertSpaces ? ' '.repeat(tabSize) : '\t'
+      let bracePosition = END_OF_LINE
+      if (serverReady) {
+        try {
+          const projectSettings = await commands.executeCommand<Record<string, string>>(
+            Commands.EXECUTE_WORKSPACE_COMMAND,
+            Commands.GET_PROJECT_SETTINGS,
+            emptyFiles[i].toString(),
+            [BRACE_POSITION_KEY],
+          )
+          bracePosition = projectSettings?.[BRACE_POSITION_KEY] || END_OF_LINE
+        } catch (_error) {
+          // Keep the default when project formatter settings are not available yet.
+        }
+      }
       const context: any = {
         fileName: path.basename(fileName),
         packageName: "",
@@ -114,15 +152,16 @@ async function handleNewJavaFiles(e: FileCreateEvent) {
           }
         }
 
+        const preferPackagePrivate = getJavaConfiguration().get<boolean>('templates.preferPackagePrivateVisibility', false)
+        let declaration: string
         if (isModuleInfo) {
-          snippets.push(`module \${1:name} {`)
+          declaration = 'module ${1:name}'
         } else if (!serverReady || await isVersionLessThan(emptyFiles[i].toString(), 14)) {
-          snippets.push(`public \${1|class,interface,enum,abstract class,@interface|} ${typeName} {`)
+          declaration = `${preferPackagePrivate ? '' : 'public '}\${1|class,interface,enum,abstract class,@interface|} ${typeName}`
         } else {
-          snippets.push(`public \${1|class ${typeName},interface ${typeName},enum ${typeName},record ${typeName}(),abstract class ${typeName},@interface ${typeName}|} {`)
+          declaration = `${preferPackagePrivate ? '' : 'public '}\${1|class ${typeName},interface ${typeName},enum ${typeName},record ${typeName}(),abstract class ${typeName},@interface ${typeName}|}`
         }
-        snippets.push("\t${0}")
-        snippets.push("}")
+        snippets.push(...createTypeBodySnippet(declaration, indent, bracePosition))
         snippets.push("")
       }
       await workspace.jumpTo(textDocuments[i].uri)
@@ -134,6 +173,16 @@ async function handleNewJavaFiles(e: FileCreateEvent) {
 
     clearTimeout(timeout)
   }, 100)
+}
+
+export function createTypeBodySnippet(declaration: string, indent: string, bracePosition: string): string[] {
+  if (bracePosition === NEXT_LINE) {
+    return [declaration, '{', `${indent}\${0}`, '}']
+  }
+  if (bracePosition === NEXT_LINE_SHIFTED) {
+    return [declaration, `${indent}{`, `${indent}${indent}\${0}`, `${indent}}`]
+  }
+  return [`${declaration} {`, `${indent}\${0}`, '}']
 }
 
 function getWillRenameHandler(client: LanguageClient) {

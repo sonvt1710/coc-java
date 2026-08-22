@@ -47,6 +47,22 @@ function encodeBase64(text: string): string {
 }
 
 const hoverCommandRegistry: ProvideHoverCommandFn[] = []
+const EXISTING_COMMAND_PATTERN = /\[([^\]]+)\]\(command:[^)]+\)/g
+
+export function sanitizeCommandLinksInHover(hover: Hover): Hover {
+  if (!hover || !Array.isArray(hover.contents)) return hover
+  hover.contents = hover.contents.map(content => {
+    if (typeof content === 'string') {
+      return content.replace(EXISTING_COMMAND_PATTERN, '$1')
+    }
+    if (content && typeof content === 'object' && typeof (content as any).value === 'string') {
+      return { ...content, value: (content as any).value.replace(EXISTING_COMMAND_PATTERN, '$1') }
+    }
+    return content
+  })
+  return hover
+}
+
 export function registerHoverCommand(callback: ProvideHoverCommandFn): void {
   hoverCommandRegistry.push(callback)
 }
@@ -64,7 +80,7 @@ class JavaHoverProvider implements HoverProvider {
 
     // Fetch the javadoc from Java language server.
     const hoverResponse = await this.languageClient.sendRequest(HoverRequest.type as any, params, token)
-    const serverHover = hoverResponse as Hover
+    const serverHover = sanitizeCommandLinksInHover(hoverResponse as Hover)
 
     // Fetch the contributed hover commands from third party extensions.
     const contributedCommands: Command[] = await this.getContributedHoverCommands(params, token)

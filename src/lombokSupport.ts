@@ -60,31 +60,44 @@ function getExtensionLombokPath(context: ExtensionContext): string {
   return lombokJarPath
 }
 
+/** Parse the version-bearing part of a Lombok jar name without UI side effects. */
+export function parseLombokVersion(lombokPath: string): string | undefined {
+  if (!lombokPath) return undefined
+  const matches = lombokJarRegex.exec(lombokPath)
+  return matches?.[0]?.split('.jar')[0]
+}
+
+/** Parse the semver portion of a Lombok jar name without throwing for malformed names. */
+export function parseLombokVersionNumber(lombokPath: string): string | undefined {
+  const version = parseLombokVersion(lombokPath)
+  if (!version) return undefined
+  const versionTag = version.split('-')
+  return versionTag.length > 1 ? versionTag[1] : undefined
+}
+
+export function isCompatibleLombokVersion(currentVersion: string | undefined): boolean {
+  return !!currentVersion && semver.valid(currentVersion) !== null && semver.gte(currentVersion, compatibleVersion)
+}
+
 function lombokPath2Version(lombokPath: string): string {
   if (!lombokPath) return ''
-  const matches = lombokJarRegex.exec(lombokPath)
-  if (matches.length > 0) {
-    return matches[0].split('.jar')[0]
-  }
+  const version = parseLombokVersion(lombokPath)
+  if (version) return version
   window.showWarningMessage(`Lombok ${lombokPath} jar name mismatch`)
   return "lombok"
 }
 
 function lombokPath2VersionNumber(lombokPath: string): string {
-  const lombokVersionTag = lombokPath2Version(lombokPath).split('-')
-  if (lombokVersionTag?.length > 1) {
-    return lombokVersionTag[1]
+  const version = parseLombokVersionNumber(lombokPath)
+  if (version) return version
+  if (lombokPath) {
+    window.showWarningMessage(`Lombok ${lombokPath} missing version tag`)
   }
-  window.showWarningMessage(`Lombok ${lombokPath} missing version tag`)
   return unkownVersion
 }
 
 export function getLombokVersion(): string {
   return lombokPath2Version(activeLombokPath)
-}
-
-function isCompatibleLombokVersion(currentVersion: string): boolean {
-  return semver.gte(currentVersion, compatibleVersion)
 }
 
 export function addLombokParam(context: ExtensionContext, params: string[]) {
@@ -114,12 +127,14 @@ export function addLombokParam(context: ExtensionContext, params: string[]) {
   }
 
   if (lombokJarPath && fse.existsSync(lombokJarPath)) {
-    if (isCompatibleLombokVersion(lombokPath2VersionNumber(lombokJarPath))) {
+    const lombokVersion = parseLombokVersionNumber(lombokJarPath)
+    if (isCompatibleLombokVersion(lombokVersion)) {
       isExtensionLombok = false
     }
     else {
       cleanupLombokCache(context)
-      window.showWarningMessage(`The configured lombok ${lombokPath2VersionNumber(lombokJarPath)} is not supported, falling back ${lombokPath2VersionNumber(getExtensionLombokPath(context))}`)
+      const extensionLombokVersion = parseLombokVersionNumber(getExtensionLombokPath(context))
+      window.showWarningMessage(`The configured lombok ${lombokVersion || unkownVersion} is not supported, falling back ${extensionLombokVersion || unkownVersion}`)
     }
   }
 

@@ -5,7 +5,7 @@ import { existsSync } from 'fs'
 import * as path from 'path'
 import { CodeActionParams } from 'vscode-languageserver-protocol'
 import { Commands as javaCommands } from './commands'
-import { ChangeSignatureInfo, GetChangeSignatureInfoRequest, GetMoveDestinationsRequest, GetRefactorEditRequest, InferSelectionRequest, MoveRequest, RefactorWorkspaceEdit, RenamePosition, SearchSymbols, SelectionInfo } from './protocol'
+import { ChangeSignatureInfo, GetChangeSignatureInfoRequest, GetMoveDestinationsRequest, GetRefactorEditRequest, InferSelectionRequest, MoveParams, MoveRequest, RefactorWorkspaceEdit, RenamePosition, SearchSymbols, SelectionInfo } from './protocol'
 import { renderChangeSignaturePanel } from './refactoring/changeSignature'
 import { getExtractInterfaceArguments, revealExtractedInterface } from './refactoring/extractInterface'
 import { applyRefactorEdit } from './standardLanguageClientUtils'
@@ -388,13 +388,38 @@ async function moveInstanceMethod(languageClient: LanguageClient, params: CodeAc
     return
   }
 
-  const refactorEdit: RefactorWorkspaceEdit = await languageClient.sendRequest(MoveRequest.type, {
+  await requestMoveWithConfirmation(languageClient, {
     moveKind: 'moveInstanceMethod',
     sourceUris: [params.textDocument.uri],
     params,
     destination: selected.destination,
   })
+}
+
+export async function requestMoveWithConfirmation(
+  languageClient: LanguageClient,
+  moveParams: MoveParams,
+  confirm: (message: string) => Promise<boolean> = async message => {
+    return await window.showWarningMessage(message, 'Continue') === 'Continue'
+  },
+): Promise<RefactorWorkspaceEdit | undefined> {
+  let refactorEdit: RefactorWorkspaceEdit = await languageClient.sendRequest(MoveRequest.type, moveParams)
+  if (!refactorEdit?.confirmationToken) {
+    await applyRefactorEdit(languageClient, refactorEdit)
+    return refactorEdit
+  }
+
+  const detail = refactorEdit.errorMessage ? `\n\n${refactorEdit.errorMessage}` : ''
+  if (!await confirm(`This refactoring may change program behavior. Continue anyway?${detail}`)) {
+    return undefined
+  }
+
+  refactorEdit = await languageClient.sendRequest(MoveRequest.type, {
+    ...moveParams,
+    confirmationToken: refactorEdit.confirmationToken,
+  })
   await applyRefactorEdit(languageClient, refactorEdit)
+  return refactorEdit
 }
 
 async function moveStaticMember(languageClient: LanguageClient, params: CodeActionParams, commandInfo: any) {

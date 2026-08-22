@@ -1,5 +1,5 @@
 'use strict'
-import { LanguageClient, LanguageClientOptions, ServerOptions, StreamInfo } from 'coc.nvim'
+import { commands, LanguageClient, LanguageClientOptions, ServerOptions, StreamInfo } from 'coc.nvim'
 import * as net from 'net'
 import { DidChangeConfigurationNotification } from 'vscode-languageserver-protocol'
 import { apiManager } from './apiManager'
@@ -7,7 +7,7 @@ import { ClientErrorHandler } from './clientErrorHandler'
 import { ClientStatus } from './extension.api'
 import { createLogger } from './log'
 import { OutputInfoCollector } from './outputInfoCollector'
-import { StatusNotification } from './protocol'
+import { ExecuteClientCommandRequest, StatusNotification } from './protocol'
 import { ServerMode } from './settings'
 import { getJavaConfig } from './utils'
 
@@ -57,6 +57,9 @@ export class SyntaxLanguageClient {
       // TODO: Currently only resolve the promise when the server mode is explicitly set to lightweight.
       // This is to avoid breakings
       this.languageClient.onReady().then(() => {
+        this.languageClient.onRequest(ExecuteClientCommandRequest.type, (params) => {
+          return commands.executeCommand(params.command, ...(params.arguments || []))
+        })
         this.languageClient.onNotification(StatusNotification.type, (report) => {
           switch (report.type) {
             case 'Started':

@@ -19,6 +19,7 @@ class ApiManager {
   private traceEventEmitter: Emitter<any> = new Emitter<any>()
   private sourceInvalidatedEventEmitter: Emitter<SourceInvalidatedEvent> = new Emitter<SourceInvalidatedEvent>();
   private serverReadyPromiseResolve: (result: boolean) => void
+  private serverRunningPromiseResolve: (result: boolean) => void
 
   public initialize(requirements: RequirementsData, serverMode: ServerMode): void {
     const getDocumentSymbols: GetDocumentSymbolsCommand = getDocumentSymbolsProvider()
@@ -48,6 +49,10 @@ class ApiManager {
     const serverReady = async () => {
       return serverReadyPromise
     }
+    const serverRunningPromise = new Promise<boolean>((resolve) => {
+      this.serverRunningPromiseResolve = resolve
+    })
+    const serverRunning = async () => serverRunningPromise
 
     this.api = {
       apiVersion: extensionApiVersion,
@@ -65,6 +70,7 @@ class ApiManager {
       onDidProjectsImport,
       onDidProjectsDelete,
       serverReady,
+      serverRunning,
       trackEvent: traceEvent,
       onDidSourceInvalidate: this.sourceInvalidatedEventEmitter.event,
     }
@@ -112,6 +118,10 @@ class ApiManager {
 
   public resolveServerReadyPromise(): void {
     this.serverReadyPromiseResolve(true)
+  }
+
+  public resolveServerRunningPromise(): void {
+    this.serverRunningPromiseResolve?.(true)
   }
 }
 

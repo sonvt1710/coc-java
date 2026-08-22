@@ -134,6 +134,7 @@ function hasJavaConfigChanged(oldConfig: WorkspaceConfiguration, newConfig: Work
     || hasConfigKeyChanged('diagnostic.filter', oldConfig, newConfig)
     || hasConfigKeyChanged('jdt.ls.javac.enabled', oldConfig, newConfig)
     || hasConfigKeyChanged('completion.engine', oldConfig, newConfig)
+    || hasConfigKeyChanged('jdt.ls.appcds.enabled', oldConfig, newConfig)
 }
 
 function hasConfigKeyChanged(key, oldConfig, newConfig) {

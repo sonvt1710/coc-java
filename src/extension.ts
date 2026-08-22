@@ -23,6 +23,7 @@ import { collectJavaExtensions, getBundlesToReload } from './plugin'
 import { registerClientProviders } from './providerDispatcher'
 import { initialize as initializeRecommendation } from './recommendation'
 import * as requirements from './requirements'
+import { JavaRuntimes } from './javaRuntimes'
 import { runtimeStatusBarProvider } from './runtimeStatusBarProvider'
 import { serverStatusBarProvider } from './serverStatusBarProvider'
 import { ACTIVE_BUILD_TOOL_STATE, cleanWorkspaceFileName, getImportMode, getJavaServerMode, ImportMode, onConfigurationChange, ServerMode } from './settings'
@@ -38,6 +39,7 @@ const extensionName = 'Language Support for Java'
 
 let storagePath: string
 let clientLogFile: string
+let standardServerStart: Promise<LanguageClient | undefined> | undefined
 
 /**
  * Shows a message about the server crashing due to an out of memory issue
@@ -111,6 +113,7 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
   cleanJavaWorkspaceStorage()
 
   serverStatusBarProvider.initialize(context)
+  JavaRuntimes.initialize(context)
 
   // https://github.com/redhat-developer/vscode-java/issues/3484
   if (process.platform === 'darwin' && process.arch === 'x64') {
@@ -180,6 +183,7 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
             advancedExtractRefactoringSupport: true,
             inferSelectionSupport: ["extractMethod", "extractVariable", "extractField"],
             moveRefactoringSupport: true,
+            moveRefactoringConfirmationSupport: true,
             clientHoverProvider: true,
             clientDocumentSymbolProvider: true,
             gradleChecksumWrapperPromptSupport: true,
@@ -295,7 +299,7 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
         serverStatusBarProvider.showLightWeightStatus()
       }
 
-      context.subscriptions.push(commands.registerCommand(Commands.EXECUTE_WORKSPACE_COMMAND, (command, ...rest) => {
+      context.subscriptions.push(commands.registerCommand(Commands.EXECUTE_WORKSPACE_COMMAND, async (command, ...rest) => {
         const api: ExtensionAPI = apiManager.getApiInstance()
         if (api.serverMode === ServerMode.lightWeight) {
           window.showWarningMessage(`The command: ${command} is not supported in LightWeight mode. See: https://github.com/redhat-developer/vscode-java/issues/1480`)
@@ -311,12 +315,42 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
           command,
           arguments: commandArgs
         }
-        if (token) {
-          return standardClient.getClient().sendRequest(ExecuteCommandRequest.type as any, params, token)
-        } else {
-          return standardClient.getClient().sendRequest(ExecuteCommandRequest.type as any, params)
+        const client = await getStandardLanguageClient()
+        if (!client) {
+          createLogger().warn(`Cannot execute Java workspace command '${command}' because the standard language client is not initialized`)
+          return
         }
+        return token
+          ? client.sendRequest(ExecuteCommandRequest.type as any, params, token)
+          : client.sendRequest(ExecuteCommandRequest.type as any, params)
       }, null, true))
+
+      context.subscriptions.push(commands.registerCommand(Commands.COPY_FULLY_QUALIFIED_NAME, async () => {
+        const editor = window.activeTextEditor
+        if (!editor || editor.document.languageId !== 'java') return
+        const position = await window.getCursorPosition()
+        const params = {
+          textDocument: { uri: editor.document.uri },
+          position: { line: position.line, character: position.character },
+        }
+        const fullyQualifiedName = await commands.executeCommand<string>(
+          Commands.EXECUTE_WORKSPACE_COMMAND,
+          Commands.GET_FULLY_QUALIFIED_NAME,
+          JSON.stringify(params),
+        )
+        if (fullyQualifiedName) {
+          await workspace.nvim.call('setreg', ['+', fullyQualifiedName])
+        }
+      }))
+
+      context.subscriptions.push(commands.registerCommand(Commands.CHANGE_SEARCH_SCOPE, async () => {
+        const selection = await window.showQuickPick(['all', 'main', 'projectOnly'], {
+          placeHolder: `Current: ${getJavaConfiguration().get('search.scope')}`,
+        })
+        if (selection) {
+          await getJavaConfiguration().update('search.scope', selection, ConfigurationTarget.Global)
+        }
+      }))
 
       const cleanWorkspaceExists = fs.existsSync(path.join(workspacePath, cleanWorkspaceFileName))
       if (cleanWorkspaceExists) {
@@ -440,16 +474,52 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
   })
 }
 
-async function startStandardServer(context: ExtensionContext, requirements: requirements.RequirementsData, clientOptions: LanguageClientOptions, workspacePath: string, triggeredByCommand: boolean = false) {
-  if (standardClient.getClientStatus() !== ClientStatus.uninitialized) {
-    return
+async function getStandardLanguageClient(): Promise<LanguageClient | undefined> {
+  try {
+    if (standardServerStart) {
+      return await standardServerStart
+    }
+  } catch (error) {
+    createLogger().error(`Failed to initialize the Java language client: ${String(error)}`)
   }
+  return standardClient.getClient()
+}
+
+async function startStandardServer(
+  context: ExtensionContext,
+  requirements: requirements.RequirementsData,
+  clientOptions: LanguageClientOptions,
+  workspacePath: string,
+  triggeredByCommand: boolean = false,
+): Promise<LanguageClient | undefined> {
+  if (standardServerStart) {
+    const client = await standardServerStart
+    if (client || !triggeredByCommand) return client
+  }
+  if (standardClient.getClientStatus() !== ClientStatus.uninitialized) {
+    return standardClient.getClient()
+  }
+
+  standardServerStart = doStartStandardServer(context, requirements, clientOptions, workspacePath, triggeredByCommand)
+    .finally(() => {
+      standardServerStart = undefined
+    })
+  return standardServerStart
+}
+
+async function doStartStandardServer(
+  context: ExtensionContext,
+  requirements: requirements.RequirementsData,
+  clientOptions: LanguageClientOptions,
+  workspacePath: string,
+  triggeredByCommand: boolean,
+): Promise<LanguageClient | undefined> {
 
   const selector: BuildFileSelector = new BuildFileSelector(context, [])
   const importMode: ImportMode = await getImportMode(context, selector)
   if (importMode === ImportMode.automatic) {
     if (!await ensureNoBuildToolConflicts(context, clientOptions)) {
-      return
+      return undefined
     }
   } else {
     const buildFiles: string[] = []
@@ -464,7 +534,7 @@ async function startStandardServer(context: ExtensionContext, requirements: requ
     if (buildFiles.length === 0) {
       commands.executeCommand('setContext', 'java:serverMode', ServerMode.lightWeight)
       serverStatusBarProvider.showNotImportedStatus()
-      return
+      return undefined
     }
     clientOptions.initializationOptions.projectConfigurations = buildFiles
   }
@@ -477,6 +547,7 @@ async function startStandardServer(context: ExtensionContext, requirements: requ
   await standardClient.initialize(context, requirements, clientOptions, workspacePath, jdtEventEmitter)
   standardClient.start()
   serverStatusBarProvider.showStandardStatus()
+  return standardClient.getClient()
 }
 
 async function workspaceContainsBuildFiles(): Promise<boolean> {

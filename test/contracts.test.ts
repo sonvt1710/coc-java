@@ -9,6 +9,12 @@ import { apiManager } from '../src/apiManager.ts'
 import type { ExtensionAPI } from '../src/extension.api.ts'
 import { getJavaEncoding, getJavaServerMode, ServerMode } from '../src/settings.ts'
 import { getBuildFilePatterns, getJavaConfig } from '../src/utils.ts'
+import { createTypeBodySnippet } from '../src/fileEventHandler.ts'
+import { addAppCDSParams, addJavacParams, getPredefinedVariablesEnv, getUnicodeLocaleEnv, prepareParams } from '../src/javaServerStarter.ts'
+import { sanitizeCommandLinksInHover } from '../src/hoverAction.ts'
+import { isCompatibleLombokVersion, parseLombokVersion, parseLombokVersionNumber } from '../src/lombokSupport.ts'
+import { isCompatibleRuntime } from '../src/javaRuntimes.ts'
+import { requestMoveWithConfirmation } from '../src/refactorAction.ts'
 
 const SERVER_TIMEOUT = 10_000
 
@@ -26,6 +32,7 @@ interface VirtualServerState {
 
 interface VirtualServer {
   getState(): VirtualServerState
+  setBuildStatus(status: number): void
   waitForRequest(method: string, timeout?: number, after?: number): Promise<RecordedMessage>
   waitForNotification(method: string, timeout?: number, after?: number, expectedParams?: unknown): Promise<RecordedMessage>
 }
@@ -119,10 +126,17 @@ describe('coc-java fast contracts', () => {
   it('loads every contributed Java setting and forwards it during initialization', () => {
     const properties = packageJson.contributes.configuration.properties as Record<string, ConfigurationSchema>
     const entries = Object.entries(properties)
-    assert.equal(entries.length, 114, 'update this contract when settings are intentionally added or removed')
+    assert.equal(entries.length, 133, 'update this contract when settings are intentionally added or removed')
 
     const javaSettings = virtualServer.getState().initializeParams?.initializationOptions?.settings?.java
     assert.ok(javaSettings, 'the virtual server should capture Java initialization settings')
+    assert.equal(javaSettings.jdt.ls.kotlinSupport.enabled, true)
+    assert.equal(javaSettings.inlayHints.formatParameters.enabled, false)
+    assert.equal(javaSettings.search.scope, 'all')
+    assert.equal(
+      virtualServer.getState().initializeParams?.initializationOptions?.extendedClientCapabilities?.moveRefactoringConfirmationSupport,
+      true,
+    )
 
     for (const [key, schema] of entries) {
       assert.match(key, /^java\./)
@@ -187,7 +201,7 @@ describe('coc-java fast contracts', () => {
 
   it('registers every contributed command plus the protocol bridge commands', () => {
     const contributed = packageJson.contributes.commands as Array<{ command: string }>
-    assert.equal(contributed.length, 27, 'update this contract when public commands are intentionally changed')
+    assert.equal(contributed.length, 30, 'update this contract when public commands are intentionally changed')
     for (const { command } of contributed) {
       assert.equal(commands.has(command), true, `${command} should be registered`)
     }
@@ -204,6 +218,14 @@ describe('coc-java fast contracts', () => {
     ]) {
       assert.equal(commands.has(command), true, `${command} should be registered`)
     }
+    assert.equal(commands.has('java.runtimes.add'), true)
+  })
+
+  it('matches detected JDKs to supported execution environments', () => {
+    assert.equal(isCompatibleRuntime({ homedir: '/jdk-8', version: { java_version: '1.8.0', major: 8 } }, 'JavaSE-1.8'), true)
+    assert.equal(isCompatibleRuntime({ homedir: '/jdk-8', version: { java_version: '1.8.0', major: 8 } }, 'JavaSE-9'), false)
+    assert.equal(isCompatibleRuntime({ homedir: '/jdk-17', version: { java_version: '17.0.0', major: 17 } }, 'JavaSE-17'), true)
+    assert.equal(isCompatibleRuntime({ homedir: '/jdk-17', version: { java_version: '17.0.0', major: 17 } }, 'JavaSE-21'), false)
   })
 
   it('routes API and command requests through the virtual server', async () => {
@@ -225,6 +247,8 @@ describe('coc-java fast contracts', () => {
       modulepaths: [],
     })
     assert.equal(await api.isTestFile(uri), false)
+    assert.equal(typeof api.serverRunning, 'function')
+    assert.equal(await api.serverRunning?.(), true)
     assert.deepEqual(plain(await commands.executeCommand('java.execute.workspaceCommand', 'java.project.getAll')), [])
 
     const commandUri = Uri.parse('file:///virtual/src')
@@ -265,13 +289,24 @@ describe('coc-java fast contracts', () => {
     assert.equal(compileRequest.params, false)
 
     const projectUri = Uri.parse('file:///virtual/project')
-    const [, buildRequest] = await executeAndWaitForRequest('java/buildProjects', () => {
-      return commands.executeCommand('java.project.build', projectUri, false)
+    const [buildResult, buildRequest] = await executeAndWaitForRequest('java/buildProjects', () => {
+      return commands.executeCommand('java.project.build', projectUri)
     })
+    assert.equal(buildResult, 1)
     assert.deepEqual(plain(buildRequest.params), {
       identifiers: [{ uri: projectUri.toString() }],
       isFullBuild: false,
     })
+
+    virtualServer.setBuildStatus(2)
+    try {
+      const [withErrors] = await executeAndWaitForRequest('java/buildWorkspace', () => {
+        return commands.executeCommand<number>('java.workspace.compile', false)
+      })
+      assert.equal(withErrors, 2, 'language-server build statuses should resolve instead of reject')
+    } finally {
+      virtualServer.setBuildStatus(1)
+    }
 
     const [, cleanupRequest] = await executeAndWaitForRequest('java/cleanup', () => {
       return commands.executeCommand('java.action.doCleanup')
@@ -283,6 +318,133 @@ describe('coc-java fast contracts', () => {
     })
     assert.equal(navigationRequest.params?.type, 'superImplementation')
     assert.equal(navigationRequest.params?.position?.textDocument?.uri, javaDocumentUri)
+  })
+
+  it('copies a fully qualified name through the workspace command bridge', async () => {
+    const [, request] = await executeAndWaitForRequest('workspace/executeCommand', () => {
+      return commands.executeCommand('java.action.copyFullyQualifiedName')
+    })
+    assert.equal(request.params?.command, 'java.getFullyQualifiedName')
+    const params = JSON.parse(request.params?.arguments?.[0])
+    assert.equal(params.textDocument.uri, javaDocumentUri)
+    assert.equal(await workspace.nvim.call('getreg', ['+']), 'com.example.Greeter')
+  })
+
+  it('adapts portable upstream startup and template behavior', async () => {
+    assert.deepEqual(plain(getUnicodeLocaleEnv('win32', { LANG: 'C' })), {})
+    assert.deepEqual(plain(getUnicodeLocaleEnv('linux', {})), { LC_CTYPE: 'C.UTF-8' })
+    assert.deepEqual(plain(getUnicodeLocaleEnv('linux', { LC_ALL: 'POSIX' })), { LC_ALL: 'C.UTF-8' })
+    assert.deepEqual(plain(getUnicodeLocaleEnv('linux', { LANG: 'en_US.UTF-8' })), {})
+    assert.deepEqual(plain(getUnicodeLocaleEnv('linux', { LANG: 'zh_CN.GBK' })), {})
+
+    const variables = getPredefinedVariablesEnv()
+    assert.ok(variables.userHome)
+    assert.equal(typeof variables.workspaceFolder, 'string')
+    assert.equal(typeof variables.workspaceFolderBasename, 'string')
+
+    assert.deepEqual(plain(createTypeBodySnippet('public class Greeter', '  ', 'end_of_line')), [
+      'public class Greeter {', '  ${0}', '}',
+    ])
+    assert.deepEqual(plain(createTypeBodySnippet('class Greeter', '\t', 'next_line')), [
+      'class Greeter', '{', '\t${0}', '}',
+    ])
+    assert.deepEqual(plain(createTypeBodySnippet('class Greeter', '  ', 'next_line_shifted')), [
+      'class Greeter', '  {', '    ${0}', '  }',
+    ])
+
+    const sanitized = sanitizeCommandLinksInHover({
+      contents: [{ language: 'markdown', value: '[unsafe](command:evil.run) and [JDK](jdt://contents/java.base)' }],
+    })
+    assert.equal((sanitized.contents[0] as any).value, 'unsafe and [JDK](jdt://contents/java.base)')
+
+    const state = { get: () => undefined, update: async () => undefined }
+    const context = {
+      extensionPath: path.resolve(process.cwd()),
+      storagePath: path.join(fixtureDirectory, 'storage'),
+      globalState: state,
+      workspaceState: state,
+      asAbsolutePath: (relativePath: string) => path.resolve(process.cwd(), relativePath),
+    } as any
+    const params = prepareParams({
+      tooling_jre: '/virtual/jdk',
+      tooling_jre_version: 24,
+      java_home: '/virtual/jdk',
+      java_version: 24,
+    }, path.join(fixtureDirectory, 'workspace'), context, false)
+    assert.ok(params.includes('-Djdk.xml.maxGeneralEntitySizeLimit=0'))
+    assert.ok(params.includes('-Djdk.xml.totalEntitySizeLimit=0'))
+
+    const javacParams: string[] = []
+    addJavacParams(javacParams, 'dom')
+    for (const flag of [
+      'jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED',
+      'jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED',
+      '-DSourceIndexer.DOM_BASED_INDEXER=true',
+      '-DMatchLocator.DOM_BASED_MATCH=true',
+      '-DIJavaSearchDelegate=org.eclipse.jdt.internal.core.search.DOMJavaSearchDelegate',
+      '-DCompilationUnit.codeComplete.DOM_BASED_OPERATIONS=true',
+    ]) {
+      assert.ok(javacParams.includes(flag), `${flag} should be forwarded to jdt-javac`)
+    }
+
+    const appCDSParams: string[] = []
+    addAppCDSParams(appCDSParams, 'on', fixtureDirectory, '1.42.0', 21, '')
+    assert.ok(appCDSParams.includes('-XX:+AutoCreateSharedArchive'))
+    assert.ok(appCDSParams.some(param => param.startsWith('-XX:SharedArchiveFile=')))
+    const debugParams = ['-agentlib:jdwp=transport=dt_socket']
+    addAppCDSParams(debugParams, 'on', fixtureDirectory, '1.42.0', 21, '')
+    assert.equal(debugParams.length, 1, 'AppCDS should stay disabled while debugging')
+    const java17Params: string[] = []
+    addAppCDSParams(java17Params, 'on', fixtureDirectory, '1.42.0', 17, '')
+    assert.equal(java17Params.length, 0, 'AppCDS should stay disabled on the supported Java 17 fallback')
+  })
+
+  it('parses Lombok versions without crashing on malformed jar names', () => {
+    assert.equal(parseLombokVersion(undefined), undefined)
+    assert.equal(parseLombokVersion('/tmp/example.jar'), undefined)
+    assert.equal(parseLombokVersionNumber('/tmp/lombok.jar'), undefined)
+    assert.equal(isCompatibleLombokVersion(undefined), false)
+    assert.equal(isCompatibleLombokVersion('not-a-version'), false)
+
+    const jar = '/tmp/lombok-1.18.32.jar'
+    assert.equal(parseLombokVersion(jar), 'lombok-1.18.32')
+    assert.equal(parseLombokVersionNumber(jar), '1.18.32')
+    assert.equal(isCompatibleLombokVersion('1.18.0'), true)
+    assert.equal(isCompatibleLombokVersion('1.17.0'), false)
+  })
+
+  it('retries move refactoring only after confirmation', async () => {
+    const requests: any[] = []
+    const client = {
+      sendRequest: async (_type: unknown, params: any) => {
+        requests.push(plain(params))
+        return requests.length === 1
+          ? { confirmationToken: 'confirm-move', errorMessage: 'A target method may be shadowed.' }
+          : { edit: { changes: {} } }
+      },
+    } as any
+    const moveParams = {
+      moveKind: 'moveInstanceMethod',
+      sourceUris: [javaDocumentUri],
+      params: {
+        textDocument: { uri: javaDocumentUri },
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+        context: { diagnostics: [] },
+      },
+      destination: { name: 'target' },
+    }
+    let confirmationMessage = ''
+    await requestMoveWithConfirmation(client, moveParams, async message => {
+      confirmationMessage = message
+      return true
+    })
+    assert.match(confirmationMessage, /target method may be shadowed/)
+    assert.equal(requests.length, 2)
+    assert.equal(requests[1].confirmationToken, 'confirm-move')
+
+    requests.length = 0
+    await requestMoveWithConfirmation(client, moveParams, async () => false)
+    assert.equal(requests.length, 1)
   })
 
   it('uses project and hierarchy protocol commands for command-palette actions', async () => {

@@ -323,4 +323,14 @@ export namespace Commands {
    * Clean everything in the shared index directory.
    */
   export const CLEAN_SHARED_INDEXES = "java.clean.sharedIndexes"
+
+  /**
+   * Add a Java runtime to java.configuration.runtimes.
+   */
+  export const ADD_JAVA_RUNTIME = "java.runtimes.add"
+
+  export const CHANGE_SEARCH_SCOPE = 'java.change.searchScope'
+
+  export const COPY_FULLY_QUALIFIED_NAME = 'java.action.copyFullyQualifiedName'
+  export const GET_FULLY_QUALIFIED_NAME = 'java.getFullyQualifiedName'
 }

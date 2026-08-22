@@ -5,7 +5,7 @@ import { DocumentSymbolRequest, HoverRequest, SymbolInformation as clientSymbolI
 import { apiManager } from './apiManager'
 import { Commands } from './commands'
 import { getActiveLanguageClient } from './extension'
-import { createClientHoverProvider } from './hoverAction'
+import { createClientHoverProvider, sanitizeCommandLinksInHover } from './hoverAction'
 import { ClassFileContentsRequest } from './protocol'
 import { ServerMode } from "./settings"
 import { equals } from './utils'
@@ -59,7 +59,7 @@ export class ClientHoverProvider implements HoverProvider {
       }
       const hoverResponse = await languageClient.sendRequest(HoverRequest.type as any, params, token)
       const hover = hoverResponse as Hover
-      return fixJdtSchemeHoverLinks(hover)
+      return fixJdtSchemeHoverLinks(sanitizeCommandLinksInHover(hover))
     }
   }
 }

@@ -1,6 +1,6 @@
 'use strict'
 
-import { CancellationToken, CodeActionKind, commands, ConfigurationTarget, DiagnosticItem, diagnosticManager, DiagnosticSeverity, DocumentSelector, Emitter, ExtensionContext, extensions, FeatureState, LanguageClient, LanguageClientOptions, languages, Location, nvim, Position, Range, services, StaticFeature, StreamInfo, TextDocumentPositionParams, TextEditor, Uri, window, workspace } from "coc.nvim"
+import { CancellationToken, CodeActionKind, commands, ConfigurationTarget, DocumentSelector, Emitter, ExtensionContext, extensions, FeatureState, LanguageClient, LanguageClientOptions, languages, Location, Position, Range, services, StaticFeature, StreamInfo, TextDocumentPositionParams, TextEditor, Uri, window, workspace } from "coc.nvim"
 import * as fse from 'fs-extra'
 import { findRuntimes } from "jdk-utils"
 import * as net from 'net'
@@ -111,6 +111,7 @@ export class StandardLanguageClient {
     this.languageClient.onReady().then(() => {
       activationProgressNotification.showProgress()
       this.languageClient.onNotification(StatusNotification.type, (report) => {
+        apiManager.resolveServerRunningPromise()
         switch (report.type) {
           case 'ServiceReady':
             apiManager.updateServerMode(ServerMode.standard)
@@ -510,43 +511,25 @@ export class StandardLanguageClient {
           identifiers: resources.map((u => {
             return { uri: u.toString() }
           })),
-          // we can consider expose 'isFullBuild' according to users' feedback,
-          // currently set it to true by default.
-          isFullBuild: isFullBuild === undefined ? true : isFullBuild,
+          isFullBuild: isFullBuild === undefined ? false : isFullBuild,
         }
 
         return window.withProgress({ title: 'Rebuild' }, async p => {
           p.report({ message: 'Rebuilding projects...' })
-          return new Promise(async (resolve, reject) => {
-            const start = new Date().getTime()
-            let res: BuildWorkspaceStatus
-            try {
-              res = token ? await this.languageClient.sendRequest(BuildProjectRequest.type, params, token) :
-                await this.languageClient.sendRequest(BuildProjectRequest.type, params)
-            } catch (error) {
-              if (error && typeof error === 'object' && 'code' in error && error.code === -32800) { // Check if the request is cancelled.
-                res = BuildWorkspaceStatus.cancelled
-              }
-              reject(error)
-            }
-
-            const elapsed = new Date().getTime() - start
-            const humanVisibleDelay = elapsed < 1000 ? 1000 : 0
-
-            if (res == BuildWorkspaceStatus.withError) {
-              showCompileBuildDiagnostics()
-              window.showWarningMessage("Build finished with errors")
-            } else if (res == BuildWorkspaceStatus.succeed) {
-              window.showInformationMessage("Build finished successfully")
-            } else if (res == BuildWorkspaceStatus.cancelled) {
-              window.showWarningMessage("Build process was canceled")
+          const start = Date.now()
+          let res: BuildWorkspaceStatus
+          try {
+            res = token ? await this.languageClient.sendRequest(BuildProjectRequest.type, params, token) :
+              await this.languageClient.sendRequest(BuildProjectRequest.type, params)
+          } catch (error) {
+            if (error && typeof error === 'object' && 'code' in error && error.code === -32800) {
+              res = BuildWorkspaceStatus.cancelled
             } else {
-              window.showErrorMessage("Build process failed")
+              throw error
             }
-            setTimeout(() => { // set a timeout so user would still see the message when build time is short
-              resolve()
-            }, humanVisibleDelay)
-          })
+          }
+          await new Promise(resolve => setTimeout(resolve, Math.max(0, 1000 - (Date.now() - start))))
+          return res
         })
       }))
 
@@ -557,37 +540,20 @@ export class StandardLanguageClient {
             isFullCompile = selection !== 'Incremental'
           }
           p.report({ message: 'Compiling workspace...' })
-          return new Promise(async (resolve, reject) => {
-            const start = new Date().getTime()
-            let res: BuildWorkspaceStatus
-            try {
-              res = token ? await this.languageClient.sendRequest(CompileWorkspaceRequest.type, isFullCompile, token)
-                : await this.languageClient.sendRequest(CompileWorkspaceRequest.type, isFullCompile)
-            } catch (error) {
-              if (error && typeof error === 'object' && 'code' in error && error.code === -32800) { // Check if the request is cancelled.
-                res = BuildWorkspaceStatus.cancelled
-              } else {
-                reject(error)
-              }
-            }
-
-            const elapsed = new Date().getTime() - start
-            const humanVisibleDelay = elapsed < 1000 ? 1000 : 0
-
-            if (res == BuildWorkspaceStatus.withError) {
-              showCompileBuildDiagnostics()
-              window.showWarningMessage("Compilation for workspace finished with errors")
-            } else if (res == BuildWorkspaceStatus.succeed) {
-              window.showInformationMessage("Compilation for workspace finished successfully")
-            } else if (res == BuildWorkspaceStatus.cancelled) {
-              window.showWarningMessage("Compilation process was canceled")
+          const start = Date.now()
+          let res: BuildWorkspaceStatus
+          try {
+            res = token ? await this.languageClient.sendRequest(CompileWorkspaceRequest.type, isFullCompile, token)
+              : await this.languageClient.sendRequest(CompileWorkspaceRequest.type, isFullCompile)
+          } catch (error) {
+            if (error && typeof error === 'object' && 'code' in error && error.code === -32800) {
+              res = BuildWorkspaceStatus.cancelled
             } else {
-              window.showErrorMessage("Compilation process failed")
+              throw error
             }
-            setTimeout(() => { // set a timeout so user would still see the message when build time is short
-              resolve(res)
-            }, humanVisibleDelay)
-          })
+          }
+          await new Promise(resolve => setTimeout(resolve, Math.max(0, 1000 - (Date.now() - start))))
+          return res
         })
       }))
 
@@ -799,22 +765,6 @@ async function showImportFinishNotification(context: ExtensionContext) {
   }
 }
 
-async function showCompileBuildDiagnostics() {
-  const diagnostics = await diagnosticManager.getDiagnosticList()
-  const normalized = Uri.parse(workspace.getWorkspaceFolder(workspace.cwd).uri)
-
-  const workingDirectoryList = diagnostics.filter(item => isParentFolder(normalized.fsPath, item.file))
-  const errorDiagnostics = workingDirectoryList.filter(item => isErrorDiagnostic(item.level))
-  const filesDiagnostics = errorDiagnostics.filter(item => isFileDiagnostic(item))
-  const quickFixList = await workspace.getQuickfixList(filesDiagnostics.map(item => item.location))
-
-  const quickListConfig: any = { title: `[JDTLS] Compile & Build project [${formatDate(new Date())}]`, items: quickFixList }
-  await nvim.call('setqflist', [[], " ", quickListConfig])
-
-  let openCommand = await nvim.getVar('coc_quickfix_open_command') as string
-  nvim.command(typeof openCommand === 'string' ? openCommand : 'copen', true)
-}
-
 function logNotification(message: string) {
   return new Promise(() => {
     createLogger().trace(message)
@@ -857,49 +807,6 @@ function setNullAnalysisStatus(status: FeatureStatus) {
 
 function decodeBase64(text: string): string {
   return Buffer.from(text, 'base64').toString('ascii')
-}
-
-function fileStartsWith(dir: string, pdir: string) {
-  return dir.toLowerCase().startsWith(pdir.toLowerCase())
-}
-
-function normalizeFilePath(filepath: string) {
-  return Uri.file(path.resolve(path.normalize(filepath))).fsPath
-}
-
-function isErrorDiagnostic(level: number): boolean {
-  return level == DiagnosticSeverity.Error
-}
-
-function isFileDiagnostic(item: DiagnosticItem): boolean {
-  const basename = path.basename(item.file)
-  const extension = path.extname(item.file)
-  return basename == "pom.xml" || basename === "build.gradle" || extension === ".java"
-}
-
-function isParentFolder(folder: string, filepath: string): boolean {
-  let pdir = normalizeFilePath(folder)
-  let dir = normalizeFilePath(filepath)
-  return fileStartsWith(dir, pdir) && dir[pdir.length] == path.sep
-}
-
-function formatDate(date: Date): string {
-  // Weekday names
-  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  // Month names
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-  // Extract components
-  const dayOfWeek = weekdays[date.getDay()];
-  const month = months[date.getMonth()];
-  const dayOfMonth = date.getDate();
-  const hours = date.getHours().toString().padStart(2, '0');
-  const minutes = date.getMinutes().toString().padStart(2, '0');
-  const seconds = date.getSeconds().toString().padStart(2, '0');
-  const year = date.getFullYear();
-
-  // Format the date string
-  return `${dayOfWeek} ${month} ${dayOfMonth} ${hours}:${minutes}:${seconds} ${year}`;
 }
 
 export function showNoLocationFound(message: string): void {

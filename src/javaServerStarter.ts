@@ -1,6 +1,6 @@
 'use strict'
 
-import { Executable, ExecutableOptions, ExtensionContext, StreamInfo, TransportKind, workspace } from 'coc.nvim'
+import { Executable, ExecutableOptions, ExtensionContext, StreamInfo, TransportKind, Uri, workspace } from 'coc.nvim'
 import * as fs from 'fs'
 import * as fse from 'fs-extra'
 import { globSync } from 'glob'
@@ -34,13 +34,22 @@ export const HEAP_DUMP = '-XX:+HeapDumpOnOutOfMemoryError'
  */
 const DEPENDENCY_COLLECTOR_IMPL = '-Daether.dependencyCollector.impl=';
 const DEPENDENCY_COLLECTOR_IMPL_BF = 'bf';
+const UNLOCK_DIAGNOSTIC_VM_OPTIONS = '-XX:+UnlockDiagnosticVMOptions'
+const ALLOW_ARCHIVING_WITH_JAVA_AGENT = '-XX:+AllowArchivingWithJavaAgent'
+const AUTO_CREATE_SHARED_ARCHIVE = '-XX:+AutoCreateSharedArchive'
+const SHARED_ARCHIVE_FILE_LOC = '-XX:SharedArchiveFile='
 
 export function prepareExecutable(requirements: RequirementsData, workspacePath, javaConfig, context: ExtensionContext, isSyntaxServer: boolean): Executable {
   // coc.nvim's runtime supports `transport`, although older coc.nvim typings
   // don't expose the property on Executable.
   const executable = Object.create(null) as Executable & { transport?: TransportKind }
   const options: ExecutableOptions = Object.create(null)
-  options.env = Object.assign({ syntaxserver: isSyntaxServer }, process.env)
+  options.env = Object.assign(
+    { syntaxserver: isSyntaxServer },
+    process.env,
+    getPredefinedVariablesEnv(),
+    getUnicodeLocaleEnv(),
+  )
   if (os.platform() === 'win32') {
     const vmargs = getJavaConfiguration().get('jdt.ls.vmargs', '')
     const watchParentProcess = '-DwatchParentProcess=false'
@@ -72,6 +81,115 @@ export function prepareExecutable(requirements: RequirementsData, workspacePath,
   createLogger().info(`Starting Java server with: ${executable.command} ${executable.args.join(' ')}`)
   return executable
 }
+
+/** Values understood by JDT LS when settings contain VS Code-style variables. */
+export function getPredefinedVariablesEnv(): Record<string, string> {
+  const folderUri = workspace.workspaceFolders?.[0]?.uri
+  const workspacePath = workspace.root || (folderUri ? Uri.parse(folderUri).fsPath : '')
+  return {
+    userHome: os.homedir(),
+    workspaceFolder: workspacePath || '',
+    workspaceFolderBasename: workspacePath ? path.basename(workspacePath) : '',
+  }
+}
+
+export const LOCALE_ENV_VARS: string[] = ['LC_ALL', 'LC_CTYPE', 'LANG']
+const ASCII_LOCALES: string[] = ['C', 'POSIX', 'C.ASCII']
+export const UTF8_LOCALE = 'C.UTF-8'
+
+/** Ensure the JVM can represent non-ASCII filenames when the host locale selects ASCII. */
+export function getUnicodeLocaleEnv(
+  platform: NodeJS.Platform = os.platform(),
+  sourceEnv: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  if (platform === 'win32') {
+    return {}
+  }
+  const locale = LOCALE_ENV_VARS.map(name => sourceEnv[name]).find(value => !!value)
+  if (locale && !ASCII_LOCALES.includes(locale)) {
+    return {}
+  }
+  createLogger().info(`Locale '${locale ?? '<unset>'}' cannot represent non-ASCII file names, starting JDT LS with ${UTF8_LOCALE}`)
+  return sourceEnv.LC_ALL ? { LC_ALL: UTF8_LOCALE } : { LC_CTYPE: UTF8_LOCALE }
+}
+
+export function addJavacParams(params: string[], completionEngine?: string): void {
+  params.push(
+    '--add-opens',
+    'jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.javadoc/jdk.javadoc.internal.doclets.formats.html.taglets.snippet=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.javadoc/jdk.javadoc.internal.doclets.formats.html.taglets=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.compiler/com.sun.tools.javac.platform=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.compiler/com.sun.tools.javac.resources=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.compiler/com.sun.tools.javac.jvm=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED',
+    '--add-opens',
+    'jdk.zipfs/jdk.nio.zipfs=ALL-UNNAMED',
+    '--add-opens',
+    'java.compiler/javax.tools=ALL-UNNAMED',
+    '--add-opens',
+    'java.base/java.nio.channels=ALL-UNNAMED',
+    '--add-opens',
+    'java.base/sun.nio.ch=ALL-UNNAMED',
+    '-DICompilationUnitResolver=org.eclipse.jdt.core.dom.JavacCompilationUnitResolver',
+    '-DCompilationUnit.DOM_BASED_OPERATIONS=true',
+    '-DAbstractImageBuilder.compilerFactory=org.eclipse.jdt.internal.javac.JavacCompilerFactory',
+    '-DSourceIndexer.DOM_BASED_INDEXER=true',
+    '-DMatchLocator.DOM_BASED_MATCH=true',
+    '-DIJavaSearchDelegate=org.eclipse.jdt.internal.core.search.DOMJavaSearchDelegate',
+  )
+  if (completionEngine === 'dom') {
+    params.push('-DCompilationUnit.codeComplete.DOM_BASED_OPERATIONS=true')
+  }
+}
+
+export function addAppCDSParams(
+  params: string[],
+  mode: string,
+  storagePath: string | undefined,
+  extensionVersion: string,
+  toolingJreVersion: number,
+  vmargs: string,
+): void {
+  const isPreRelease = /^\d+\.\d+\.\d{10}/.test(extensionVersion)
+  const enabled = mode === 'on' || (mode === 'auto' && isPreRelease)
+  // The upstream feature assumes its Java 21 minimum. coc-java still supports
+  // Java 17 for the bundled JDT LS, where this VM option is unavailable.
+  if (!enabled || toolingJreVersion < 21 || !storagePath || vmargs.includes(SHARED_ARCHIVE_FILE_LOC)
+    || params.some(param => param.includes('jdwp'))) {
+    return
+  }
+  const archiveDirectory = path.join(storagePath, extensionVersion, 'appcds')
+  ensureExists(archiveDirectory)
+  params.push(
+    UNLOCK_DIAGNOSTIC_VM_OPTIONS,
+    ALLOW_ARCHIVING_WITH_JAVA_AGENT,
+    AUTO_CREATE_SHARED_ARCHIVE,
+    `${SHARED_ARCHIVE_FILE_LOC}${path.join(archiveDirectory, 'jdtls.jsa')}`,
+  )
+}
 export function awaitServerConnection(port): Thenable<StreamInfo> {
   const addr = parseInt(port)
   return new Promise((res, rej) => {
@@ -89,13 +207,21 @@ export function awaitServerConnection(port): Thenable<StreamInfo> {
   })
 }
 
-function prepareParams(requirements: RequirementsData, workspacePath, context: ExtensionContext, isSyntaxServer: boolean): string[] {
+export function prepareParams(requirements: RequirementsData, workspacePath, context: ExtensionContext, isSyntaxServer: boolean): string[] {
   const params: string[] = []
   if (DEBUG) {
     const port = isSyntaxServer ? 1045 : 1044
     params.push(`-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=${port},quiet=y`)
     // suspend=y is the default. Use this form if you need to debug the server startup code:
     //  params.push('-agentlib:jdwp=transport=dt_socket,server=y,address=1044');
+  }
+
+  // See https://github.com/eclipse-jdtls/eclipse.jdt.ls/issues/3465
+  if (requirements.tooling_jre_version >= 24) {
+    params.push(
+      '-Djdk.xml.maxGeneralEntitySizeLimit=0',
+      '-Djdk.xml.totalEntitySizeLimit=0',
+    )
   }
 
   params.push('--add-modules=ALL-SYSTEM',
@@ -110,50 +236,7 @@ function prepareParams(requirements: RequirementsData, workspacePath, context: E
 
   const javacEnabled = 'on' === getJavaConfiguration().get('jdt.ls.javac.enabled');
   if (javacEnabled) {
-    // Javac flags
-    params.push(
-      '--add-opens',
-      'jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED',
-      '--add-opens',
-      'jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED',
-      '--add-opens',
-      'jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED',
-      '--add-opens',
-      'jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED',
-      '--add-opens',
-      'jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED',
-      '--add-opens',
-      'jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED',
-      '--add-opens',
-      'jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED',
-      '--add-opens',
-      'jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED',
-      '--add-opens',
-      'jdk.javadoc/jdk.javadoc.internal.doclets.formats.html.taglets.snippet=ALL-UNNAMED',
-      '--add-opens',
-      'jdk.javadoc/jdk.javadoc.internal.doclets.formats.html.taglets=ALL-UNNAMED',
-      '--add-opens',
-      'jdk.compiler/com.sun.tools.javac.platform=ALL-UNNAMED',
-      '--add-opens',
-      'jdk.compiler/com.sun.tools.javac.resources=ALL-UNNAMED',
-      '--add-opens',
-      'jdk.compiler/com.sun.tools.javac.jvm=ALL-UNNAMED',
-      '--add-opens',
-      'jdk.zipfs/jdk.nio.zipfs=ALL-UNNAMED',
-      '--add-opens',
-      'java.compiler/javax.tools=ALL-UNNAMED',
-      '--add-opens',
-      'java.base/java.nio.channels=ALL-UNNAMED',
-      '--add-opens',
-      'java.base/sun.nio.ch=ALL-UNNAMED',
-      '-DICompilationUnitResolver=org.eclipse.jdt.core.dom.JavacCompilationUnitResolver',
-      '-DCompilationUnit.DOM_BASED_OPERATIONS=true',
-      '-DAbstractImageBuilder.compilerFactory=org.eclipse.jdt.internal.javac.JavacCompilerFactory'
-    );
-
-    if ('dom' === getJavaConfiguration().get('completion.engine')) {
-      params.push('-DCompilationUnit.codeComplete.DOM_BASED_OPERATIONS=true');
-    };
+    addJavacParams(params, getJavaConfiguration().get('completion.engine'))
   }
 
   params.push('-Declipse.application=org.eclipse.jdt.ls.core.id1',
@@ -215,6 +298,21 @@ function prepareParams(requirements: RequirementsData, workspacePath, context: E
     if (sharedIndexLocation) {
       params.push(`-Djdt.core.sharedIndexLocation=${sharedIndexLocation}`)
     }
+
+    let extensionVersion = '0.0.0'
+    try {
+      extensionVersion = JSON.parse(fs.readFileSync(path.join(context.extensionPath, 'package.json'), 'utf8')).version || extensionVersion
+    } catch (_error) {
+      // Keep a stable fallback storage directory when package metadata is unavailable.
+    }
+    addAppCDSParams(
+      params,
+      getJavaConfiguration().get('jdt.ls.appcds.enabled', 'auto'),
+      context.storagePath,
+      extensionVersion,
+      requirements.tooling_jre_version,
+      vmargs,
+    )
   }
 
   // "OpenJDK 64-Bit Server VM warning: Options -Xverify:none and -noverify

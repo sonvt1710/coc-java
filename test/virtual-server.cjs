@@ -51,6 +51,7 @@ class VirtualLanguageServer {
     this.initializeParams = undefined
     this.requests = []
     this.notifications = []
+    this.buildStatus = BUILD_SUCCEEDED
     this._requestWaiters = []
     this._notificationWaiters = []
     this._statusTimer = undefined
@@ -209,6 +210,10 @@ class VirtualLanguageServer {
     }
   }
 
+  setBuildStatus(status) {
+    this.buildStatus = status
+  }
+
   _accept(socket) {
     if (this.stopped) {
       socket.destroy()
@@ -300,12 +305,12 @@ class VirtualLanguageServer {
 
     connection.onRequest('java/buildWorkspace', params => {
       this._recordRequest('java/buildWorkspace', params)
-      return BUILD_SUCCEEDED
+      return this.buildStatus
     })
 
     connection.onRequest('java/buildProjects', params => {
       this._recordRequest('java/buildProjects', params)
-      return BUILD_SUCCEEDED
+      return this.buildStatus
     })
 
     connection.onRequest('textDocument/documentSymbol', params => {
@@ -440,6 +445,8 @@ class VirtualLanguageServer {
         return { status: true, data: [] }
       case 'java.project.createModuleInfo':
         return undefined
+      case 'java.getFullyQualifiedName':
+        return 'com.example.Greeter'
       default:
         return undefined
     }
