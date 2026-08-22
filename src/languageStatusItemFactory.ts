@@ -4,6 +4,7 @@ import { Command, languages, Uri, workspace } from 'coc.nvim'
 import * as path from "path"
 import { Commands } from "./commands"
 import { StatusIcon } from "./serverStatusBarProvider"
+import { getWorkspaceRelativePath } from './utils'
 
 export const languageServerDocumentSelector = [
   { scheme: 'file', language: 'java' },
@@ -155,7 +156,7 @@ export namespace BuildFileStatusItemFactory {
   }
 
   function getOpenBuildFileCommand(buildFilePath: string): Command {
-    const relativePath = workspace.asRelativePath(buildFilePath)
+    const relativePath = getWorkspaceRelativePath(buildFilePath)
     return {
       title: `Open Config File ${relativePath}`,
       command: Commands.OPEN_BROWSER,

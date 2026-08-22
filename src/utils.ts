@@ -7,6 +7,17 @@ import * as path from 'path'
 import { Commands } from './commands'
 import { getSupportedJreNames, listJdks, sortJdksBySource, sortJdksByVersion } from './requirements'
 
+interface RelativePathWorkspace {
+  getRelativePath?: (pathOrUri: string | Uri, includeWorkspaceFolder?: boolean) => string
+  asRelativePath?: (pathOrUri: string | Uri, includeWorkspaceFolder?: boolean) => string
+}
+
+export function getWorkspaceRelativePath(pathOrUri: string | Uri, includeWorkspaceFolder?: boolean): string {
+  const workspaceApi = workspace as unknown as RelativePathWorkspace
+  const getRelativePath = workspaceApi.getRelativePath ?? workspaceApi.asRelativePath
+  return getRelativePath.call(workspaceApi, pathOrUri, includeWorkspaceFolder)
+}
+
 export function getJavaConfiguration(): WorkspaceConfiguration {
   return workspace.getConfiguration('java')
 }

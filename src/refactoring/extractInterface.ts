@@ -2,6 +2,7 @@
 
 import { LanguageClient, QuickPickItem, Uri, window, workspace } from "coc.nvim"
 import { CheckExtractInterfaceStatusRequest, CheckExtractInterfaceStatusResponse, RefactorWorkspaceEdit } from "../protocol"
+import { getWorkspaceRelativePath } from '../utils'
 
 enum Step {
   selectMember,
@@ -96,7 +97,7 @@ export async function getExtractInterfaceArguments(languageClient: LanguageClien
           return node1.isParentOfSelectedFile ? -1 : 0
         }).map((packageNode) => {
           const packageUri: Uri = packageNode.uri ? Uri.parse(packageNode.uri) : null
-          const displayPath: string = packageUri ? workspace.asRelativePath(packageUri, true) : packageNode.path
+          const displayPath: string = packageUri ? getWorkspaceRelativePath(packageUri, true) : packageNode.path
           return {
             label: (packageNode.isParentOfSelectedFile ? '* ' : '') + packageNode.displayName,
             description: displayPath,

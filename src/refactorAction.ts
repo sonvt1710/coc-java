@@ -9,6 +9,7 @@ import { ChangeSignatureInfo, GetChangeSignatureInfoRequest, GetMoveDestinations
 import { renderChangeSignaturePanel } from './refactoring/changeSignature'
 import { getExtractInterfaceArguments, revealExtractedInterface } from './refactoring/extractInterface'
 import { applyRefactorEdit } from './standardLanguageClientUtils'
+import { getWorkspaceRelativePath } from './utils'
 
 export function registerCommands(languageClient: LanguageClient, context: ExtensionContext) {
   registerApplyRefactorCommand(languageClient, context)
@@ -242,7 +243,7 @@ async function moveFile(languageClient: LanguageClient, fileUris: Uri[]) {
 
   const packageNodeItems = moveDestinations.destinations.map((packageNode) => {
     const packageUri: Uri = packageNode.uri ? Uri.parse(packageNode.uri) : null
-    const displayPath: string = packageUri ? workspace.asRelativePath(packageUri, true) : packageNode.path
+    const displayPath: string = packageUri ? getWorkspaceRelativePath(packageUri, true) : packageNode.path
     return {
       label: (packageNode.isParentOfSelectedFile ? '* ' : '') + packageNode.displayName,
       description: displayPath,

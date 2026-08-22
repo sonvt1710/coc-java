@@ -2,7 +2,7 @@ import { ExtensionContext, MessageItem, QuickPickItem, Uri, WorkspaceFolder, win
 import * as path from "path"
 import { IBuildTool, getContributedBuildTools } from "./plugin"
 import { ACTIVE_BUILD_TOOL_STATE } from "./settings"
-import { convertToGlob, getExclusionGlob, getInclusionPatternsFromNegatedExclusion } from "./utils"
+import { convertToGlob, getExclusionGlob, getInclusionPatternsFromNegatedExclusion, getWorkspaceRelativePath } from "./utils"
 
 export const PICKED_BUILD_FILES = "java.pickedBuildFiles"
 export const BUILD_TOOL_FOR_CONFLICTS = "java.buildToolForConflicts"
@@ -164,7 +164,7 @@ export class BuildFileSelector {
       const buildTools = Array.from(picker.buildToolAndUri.keys())
         .sort((a, b) => a.displayName.localeCompare(b.displayName))
 
-      const details = buildTools.map(buildTool => workspace.asRelativePath(picker.buildToolAndUri.get(buildTool)))
+      const details = buildTools.map(buildTool => getWorkspaceRelativePath(picker.buildToolAndUri.get(buildTool)))
       const descriptions = buildTools.map(buildTool => buildTool.displayName)
 
       //picker.detail = details.join(', ')

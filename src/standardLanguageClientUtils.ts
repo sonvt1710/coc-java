@@ -7,7 +7,7 @@ import { TextDocumentIdentifier } from 'vscode-languageserver-protocol'
 import { Commands } from './commands'
 import { buildFilePatterns } from './plugin'
 import { ProjectConfigurationUpdateRequest, RefactorWorkspaceEdit } from './protocol'
-import { getAllJavaProjects } from './utils'
+import { getAllJavaProjects, getWorkspaceRelativePath } from './utils'
 
 interface QuickPickItemWithDetail extends QuickPickItem {
   detail: string
@@ -84,7 +84,7 @@ function isJavaConfigFile(filePath: string): boolean {
 }
 
 function getProjectDescription(projectPath: string): string {
-  const workspaceRelativePath = workspace.asRelativePath(projectPath)
+  const workspaceRelativePath = getWorkspaceRelativePath(projectPath)
   if (!path.isAbsolute(workspaceRelativePath)) return workspaceRelativePath
   return path.relative(workspace.root, projectPath) || path.basename(projectPath)
 }

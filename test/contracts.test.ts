@@ -855,6 +855,10 @@ describe('coc-java fast contracts', () => {
     ]
     virtualServer.setProjectUris(projectPaths.map(projectPath => Uri.file(projectPath).toString()))
     const originalShowQuickPick = window.showQuickPick
+    const workspaceApi = workspace as any
+    const hadOwnAsRelativePath = Object.prototype.hasOwnProperty.call(workspaceApi, 'asRelativePath')
+    const originalAsRelativePath = workspaceApi.asRelativePath
+    workspaceApi.asRelativePath = undefined
     let projectPicks: Array<{ label: string; description?: string; detail: string }> = []
     window.showQuickPick = (async (items: typeof projectPicks) => {
       projectPicks = items
@@ -875,6 +879,11 @@ describe('coc-java fast contracts', () => {
       assert.deepEqual(projectPicks.map(item => item.detail), projectPaths)
     } finally {
       window.showQuickPick = originalShowQuickPick
+      if (hadOwnAsRelativePath) {
+        workspaceApi.asRelativePath = originalAsRelativePath
+      } else {
+        delete workspaceApi.asRelativePath
+      }
       virtualServer.setProjectUris([])
     }
   })
