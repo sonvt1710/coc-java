@@ -23,6 +23,7 @@ import { collectJavaExtensions, getBundlesToReload } from './plugin'
 import { registerClientProviders } from './providerDispatcher'
 import { initialize as initializeRecommendation } from './recommendation'
 import * as requirements from './requirements'
+import { showRequirementsError } from './requirementsErrorHandler'
 import { JavaRuntimes } from './javaRuntimes'
 import { runtimeStatusBarProvider } from './runtimeStatusBarProvider'
 import { serverStatusBarProvider } from './serverStatusBarProvider'
@@ -127,13 +128,9 @@ export async function activate(context: ExtensionContext): Promise<ExtensionAPI>
     }
   }
 
-  return requirements.resolveRequirements(context).catch(error => {
+  return requirements.resolveRequirements(context).catch(async error => {
     // show error
-    window.showErrorMessage(error.message, error.label).then((selection) => {
-      if (error.label && error.label === selection && error.command) {
-        commands.executeCommand(error.command, error.commandParam)
-      }
-    })
+    await showRequirementsError(error)
     // rethrow to disrupt the chain.
     throw error
   }).then(async (requirements) => {

@@ -17,6 +17,7 @@ import { isCompatibleRuntime } from '../src/javaRuntimes.ts'
 import { getRuntimeMajorVersion, isRuntimeVersionInRange, sortJdksByVersion } from '../src/requirements.ts'
 import { createExtendedOutlineNodes, extendedOutlineTree, ExtendedOutlineTreeDataProvider } from '../src/outline/extendedOutlineTree.ts'
 import { requestMoveWithConfirmation } from '../src/refactorAction.ts'
+import { showRequirementsError } from '../src/requirementsErrorHandler.ts'
 import { escapeSnippetLiterals, prepareSnippetCodeAction } from '../src/snippetEdit.ts'
 import { askForProjects } from '../src/standardLanguageClientUtils.ts'
 
@@ -163,6 +164,38 @@ after(async () => {
 })
 
 describe('coc-java fast contracts', () => {
+  it('reports requirement failures without passing undefined message actions', async () => {
+    const command = 'java.test.requirementsErrorAction'
+    const calls: Array<{ message: string; items: unknown[] }> = []
+    let commandParam: unknown
+    const disposable = commands.registerCommand(command, (param: unknown) => {
+      commandParam = param
+    })
+    const originalShowErrorMessage = window.showErrorMessage
+    window.showErrorMessage = (async (message: string, ...items: unknown[]) => {
+      calls.push({ message, items })
+      return items[0]
+    }) as typeof window.showErrorMessage
+
+    try {
+      await showRequirementsError({ message: 'Unable to download JRE' })
+      await showRequirementsError({
+        message: 'A recent JDK is required',
+        label: 'Get the Java Development Kit',
+        command,
+        commandParam: 'https://example.test/jdk',
+      })
+      assert.deepEqual(calls, [
+        { message: 'Unable to download JRE', items: [] },
+        { message: 'A recent JDK is required', items: ['Get the Java Development Kit'] },
+      ])
+      assert.equal(commandParam, 'https://example.test/jdk')
+    } finally {
+      window.showErrorMessage = originalShowErrorMessage
+      disposable.dispose()
+    }
+  })
+
   it('loads every contributed Java setting and forwards it during initialization', () => {
     const properties = packageJson.contributes.configuration.properties as Record<string, ConfigurationSchema>
     const entries = Object.entries(properties)
