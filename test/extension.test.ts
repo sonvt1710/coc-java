@@ -154,6 +154,23 @@ describe('coc-java integration', () => {
     }
   })
 
+  it('opens the supertype hierarchy directly from the current Java cursor', async () => {
+    const sourceWinid = await workspace.nvim.call('win_getid', []) as number
+    await workspace.nvim.call('cursor', [1, 14])
+    try {
+      await withTimeout(
+        commands.executeCommand('java.action.showSupertypeHierarchy'),
+        30_000,
+        'supertype hierarchy command did not complete',
+      )
+      assert.equal(await workspace.nvim.eval('get(w:, "cocViewId", "")'), 'types')
+      const lines = await workspace.nvim.call('getline', [1, '$']) as string[]
+      assert.ok(lines.some(line => line.includes('Greeter')))
+    } finally {
+      await workspace.nvim.call('win_gotoid', [sourceWinid])
+    }
+  })
+
   it('renders an extended outline from the real Java language server', async () => {
     try {
       await withTimeout(

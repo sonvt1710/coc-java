@@ -459,26 +459,35 @@ export class StandardLanguageClient {
         }
       }))
 
-      context.subscriptions.push(commands.registerCommand(Commands.SHOW_TYPE_HIERARCHY, async (location?: any) => {
-        let position = await window.getCursorPosition()
+      const showTypeHierarchy = async (direction: TypeHierarchyDirection, location?: any): Promise<void> => {
         if (location instanceof Uri) {
-          typeHierarchyTree.setTypeHierarchy(Location.create(location.toString(), Range.create(position, position)), TypeHierarchyDirection.both)
+          const position = await window.getCursorPosition()
+          await typeHierarchyTree.setTypeHierarchy(Location.create(location.toString(), Range.create(position, position)), direction)
         } else {
-          if (window.activeTextEditor?.document.languageId !== "java") return
-          typeHierarchyTree.setTypeHierarchy(Location.create(window.activeTextEditor.document.uri, Range.create(position, position)), TypeHierarchyDirection.both)
+          const editor = window.activeTextEditor
+          if (editor?.document.languageId !== "java") {
+            typeHierarchyTree.changeDirection(direction)
+            return
+          }
+          const position = await window.getCursorPosition()
+          await typeHierarchyTree.setTypeHierarchy(Location.create(editor.document.uri, Range.create(position, position)), direction)
         }
+      }
+
+      context.subscriptions.push(commands.registerCommand(Commands.SHOW_TYPE_HIERARCHY, async (location?: any) => {
+        await showTypeHierarchy(TypeHierarchyDirection.both, location)
       }))
 
-      context.subscriptions.push(commands.registerCommand(Commands.SHOW_CLASS_HIERARCHY, () => {
-        typeHierarchyTree.changeDirection(TypeHierarchyDirection.both)
+      context.subscriptions.push(commands.registerCommand(Commands.SHOW_CLASS_HIERARCHY, async (location?: any) => {
+        await showTypeHierarchy(TypeHierarchyDirection.both, location)
       }, null, true))
 
-      context.subscriptions.push(commands.registerCommand(Commands.SHOW_SUPERTYPE_HIERARCHY, () => {
-        typeHierarchyTree.changeDirection(TypeHierarchyDirection.parents)
+      context.subscriptions.push(commands.registerCommand(Commands.SHOW_SUPERTYPE_HIERARCHY, async (location?: any) => {
+        await showTypeHierarchy(TypeHierarchyDirection.parents, location)
       }, null, true))
 
-      context.subscriptions.push(commands.registerCommand(Commands.SHOW_SUBTYPE_HIERARCHY, () => {
-        typeHierarchyTree.changeDirection(TypeHierarchyDirection.children)
+      context.subscriptions.push(commands.registerCommand(Commands.SHOW_SUBTYPE_HIERARCHY, async (location?: any) => {
+        await showTypeHierarchy(TypeHierarchyDirection.children, location)
       }, null, true))
 
       context.subscriptions.push(commands.registerCommand(Commands.CHANGE_BASE_TYPE, async (item: TypeHierarchyItem) => {

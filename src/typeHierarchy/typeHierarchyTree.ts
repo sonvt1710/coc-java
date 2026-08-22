@@ -100,11 +100,11 @@ export class TypeHierarchyTree {
     this.location = location
     this.direction = direction
     this.baseItem = item
-    this.api.setInput(input)
+    await this.api.setInput(input)
   }
 
   public changeDirection(direction: TypeHierarchyDirection): void {
-    if (!this.api) {
+    if (!this.api || !this.baseItem || !this.location) {
       return
     }
     if (this.cancelTokenSource) {

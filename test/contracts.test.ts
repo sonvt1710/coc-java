@@ -639,17 +639,27 @@ describe('coc-java fast contracts', () => {
     assert.equal(requests.length, 1)
   })
 
-  it('uses project and hierarchy protocol commands for command-palette actions', async () => {
+  it('uses the project protocol command for command-palette actions', async () => {
     const [, projectRequest] = await executeAndWaitForRequest('workspace/executeCommand', () => {
       return commands.executeCommand('java.project.createModuleInfo.command')
     })
     assert.equal(projectRequest.params?.command, 'java.project.getAll')
+  })
 
-    const after = virtualServer.getState().requests.length
-    const hierarchyRequest = virtualServer.waitForRequest('workspace/executeCommand', 5_000, after)
-    await commands.executeCommand('java.action.showTypeHierarchy', Uri.parse(javaDocumentUri))
-    const request = await hierarchyRequest
-    assert.equal(request.params?.command, 'java.navigate.openTypeHierarchy')
+  it('opens each hierarchy direction directly from the current Java cursor', async () => {
+    for (const [command, direction] of [
+      ['java.action.showSupertypeHierarchy', 1],
+      ['java.action.showSubtypeHierarchy', 0],
+      ['java.action.showClassHierarchy', 2],
+      ['java.action.showTypeHierarchy', 2],
+    ] as const) {
+      const [, request] = await executeAndWaitForRequest('workspace/executeCommand', () => {
+        return commands.executeCommand(command)
+      })
+      assert.equal(request.params?.command, 'java.navigate.openTypeHierarchy')
+      assert.equal(JSON.parse(request.params?.arguments?.[0]).textDocument.uri, javaDocumentUri)
+      assert.equal(JSON.parse(request.params?.arguments?.[1]), direction)
+    }
   })
 
   it('sends one notification for every selected project', async () => {
