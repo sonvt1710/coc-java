@@ -22,6 +22,14 @@ export interface RequirementsData {
   java_version: number
 }
 
+interface RequirementsDependencies {
+  checkAndDownloadJRE: typeof checkAndDownloadJRE
+  checkJavaPreferences: typeof checkJavaPreferences
+  findRuntimes: typeof findRuntimes
+  getMajorVersion: typeof getMajorVersion
+  getRuntimeFromSettings: typeof getRuntimeFromSettings
+}
+
 /**
  * Resolves the requirements needed to run the extension.
  * Returns a promise that will resolve to a RequirementsData if
@@ -29,7 +37,18 @@ export interface RequirementsData {
  * if any of the requirements fails to resolve.
  *
  */
-export async function resolveRequirements(context: ExtensionContext): Promise<RequirementsData> {
+export async function resolveRequirements(
+  context: ExtensionContext,
+  overrides: Partial<RequirementsDependencies> = {},
+): Promise<RequirementsData> {
+  const dependencies: RequirementsDependencies = {
+    checkAndDownloadJRE,
+    checkJavaPreferences,
+    findRuntimes,
+    getMajorVersion,
+    getRuntimeFromSettings,
+    ...overrides,
+  }
   return new Promise(async (resolve, reject) => {
     let javaHome: string = undefined
     let javaVersion: number = 0
@@ -39,10 +58,10 @@ export async function resolveRequirements(context: ExtensionContext): Promise<Re
 
     // search valid JDKs from env.JAVA_HOME, env.PATH, SDKMAN, jEnv, jabba, Common directories
     const requiredJdkVersion = 'on' === getJavaConfiguration().get('jdt.ls.javac.enabled') ? 23 : 21
-    const javaPreferences = await checkJavaPreferences(context)
+    const javaPreferences = await dependencies.checkJavaPreferences(context)
 
-    let javaSettingsRuntimes = await getRuntimeFromSettings()
-    let javaSystemRuntimes = await findRuntimes({ checkJavac: true, withVersion: true, withTags: true })
+    let javaSettingsRuntimes = await dependencies.getRuntimeFromSettings()
+    let javaSystemRuntimes = await dependencies.findRuntimes({ checkJavac: true, withVersion: true, withTags: true })
 
     // sort in ascending order the versions from both system & settings
     javaSystemRuntimes = sortJdksByVersion(javaSystemRuntimes || [])
@@ -52,6 +71,8 @@ export async function resolveRequirements(context: ExtensionContext): Promise<Re
     createLogger().info(`Resolving from configured runtimes: ${JSON.stringify(javaSettingsRuntimes, null, 2)}`)
 
     if (javaPreferences?.javaHome) {
+      javaHome = expandHomeDir(javaPreferences.javaHome)
+      javaVersion = await dependencies.getMajorVersion(javaHome)
       toolingJre = javaHome
       toolingJreVersion = javaVersion
       if (toolingJreVersion < requiredJdkVersion) {
@@ -85,8 +106,8 @@ export async function resolveRequirements(context: ExtensionContext): Promise<Re
       }
 
       if (toolingJreVersion < requiredJdkVersion) {
-        toolingJre = await checkAndDownloadJRE(context)
-        toolingJreVersion = await getMajorVersion(toolingJre)
+        toolingJre = await dependencies.checkAndDownloadJRE(context)
+        toolingJreVersion = await dependencies.getMajorVersion(toolingJre)
       }
     }
 
@@ -108,11 +129,10 @@ export async function resolveRequirements(context: ExtensionContext): Promise<Re
       createLogger().info(
         `Using the default JDK from java.configuration.runtimes - '${javaHome}' as the initial default project JDK.`,
       )
-    } else if (javaPreferences.javaHome) {
+    } else if (javaHome) {
       createLogger().info(
-        `Using the JDK from user preferences ${javaPreferences.preference} - '${javaPreferences.javaHome}' as the initial default project JDK.`,
+        `Using the JDK from user preferences ${javaPreferences.preference} - '${javaHome}' as the initial default project JDK.`,
       )
-      javaHome = javaPreferences.javaHome
     } else if (toolingJre) {
       javaHome = toolingJre
       javaVersion = toolingJreVersion

@@ -14,7 +14,7 @@ import { addAppCDSParams, addJavacParams, getJavaExecutable, getPredefinedVariab
 import { sanitizeCommandLinksInHover } from '../src/hoverAction.ts'
 import { isCompatibleLombokVersion, parseLombokVersion, parseLombokVersionNumber } from '../src/lombokSupport.ts'
 import { isCompatibleRuntime } from '../src/javaRuntimes.ts'
-import { getRuntimeMajorVersion, isRuntimeVersionInRange, sortJdksByVersion } from '../src/requirements.ts'
+import { getRuntimeMajorVersion, isRuntimeVersionInRange, resolveRequirements, sortJdksByVersion } from '../src/requirements.ts'
 import { createExtendedOutlineNodes, extendedOutlineTree, ExtendedOutlineTreeDataProvider } from '../src/outline/extendedOutlineTree.ts'
 import { requestMoveWithConfirmation } from '../src/refactorAction.ts'
 import { showRequirementsError } from '../src/requirementsErrorHandler.ts'
@@ -204,6 +204,39 @@ describe('coc-java fast contracts', () => {
       window.showErrorMessage = originalShowErrorMessage
       disposable.dispose()
     }
+  })
+
+  it('uses an explicitly configured tooling JDK without downloading another runtime', async () => {
+    const javaHome = path.join(fixtureDirectory, 'configured-jdk-23')
+    await fs.mkdir(path.join(javaHome, 'bin'), { recursive: true })
+    await fs.writeFile(path.join(javaHome, 'bin', process.platform === 'win32' ? 'javac.exe' : 'javac'), '')
+    let downloadCalls = 0
+    const state = { get: () => undefined, update: async () => undefined }
+    const context = {
+      storagePath: path.join(fixtureDirectory, 'requirements-storage'),
+      globalState: state,
+      workspaceState: state,
+    } as any
+
+    const requirements = await resolveRequirements(context, {
+      checkJavaPreferences: async () => ({
+        javaHome,
+        preference: 'java.jdt.ls.java.home',
+      }),
+      getRuntimeFromSettings: async () => [],
+      findRuntimes: async () => [],
+      getMajorVersion: async (candidate: string) => candidate === javaHome ? 23 : 0,
+      checkAndDownloadJRE: async () => {
+        downloadCalls++
+        return '/unexpected/downloaded-jre'
+      },
+    })
+
+    assert.equal(downloadCalls, 0)
+    assert.equal(requirements.tooling_jre, javaHome)
+    assert.equal(requirements.tooling_jre_version, 23)
+    assert.equal(requirements.java_home, javaHome)
+    assert.equal(requirements.java_version, 23)
   })
 
   it('loads every contributed Java setting and forwards it during initialization', () => {
