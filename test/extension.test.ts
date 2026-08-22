@@ -56,6 +56,11 @@ before(async () => {
     '  public String greet(String name) {',
     '    return "Hello, " + name;',
     '  }',
+    '',
+    '  public String completeName() {',
+    '    String name = "James";',
+    '    return name;',
+    '  }',
     '}',
     '',
   ].join('\n'))
@@ -115,6 +120,38 @@ describe('coc-java integration', () => {
       greeter.children?.some(symbol => symbol.name === 'greet' || symbol.name.startsWith('greet(')),
       'expected the greet method symbol',
     )
+  })
+
+  it('returns method completions after a member access', async () => {
+    try {
+      await workspace.nvim.call('cursor', [8, 16])
+      await workspace.nvim.command('startinsert')
+      await withTimeout((async () => {
+        while (!String(await workspace.nvim.call('mode')).startsWith('i')) {
+          await new Promise(resolve => setTimeout(resolve, 50))
+        }
+      })(), 5_000, 'editor did not enter insert mode')
+      await workspace.nvim.call('coc#pum#close', ['cancel'])
+      await workspace.nvim.input('.')
+      await withTimeout((async () => {
+        while (await workspace.nvim.call('getline', [8]) !== '    return name.;') {
+          await new Promise(resolve => setTimeout(resolve, 50))
+        }
+        while (await workspace.nvim.call('coc#pum#visible') !== 1) {
+          await new Promise(resolve => setTimeout(resolve, 50))
+        }
+      })(), 15_000, 'completion menu did not become visible')
+
+      const pumWinid = await workspace.nvim.call('coc#pum#winid') as number
+      const words = await workspace.nvim.call('getwinvar', [pumWinid, 'words', []]) as string[]
+      assert.ok(
+        words.some(word => word.startsWith('length')),
+        `expected String.length() in the completion menu, received ${JSON.stringify(words)}`,
+      )
+    } finally {
+      await workspace.nvim.command('stopinsert')
+      await workspace.nvim.command('silent! undo')
+    }
   })
 
   it('renders an extended outline from the real Java language server', async () => {
