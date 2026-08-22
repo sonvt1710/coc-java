@@ -28,6 +28,7 @@ interface RequirementsDependencies {
   findRuntimes: typeof findRuntimes
   getMajorVersion: typeof getMajorVersion
   getRuntimeFromSettings: typeof getRuntimeFromSettings
+  platform: NodeJS.Platform
 }
 
 /**
@@ -47,6 +48,7 @@ export async function resolveRequirements(
     findRuntimes,
     getMajorVersion,
     getRuntimeFromSettings,
+    platform: process.platform,
     ...overrides,
   }
   return new Promise(async (resolve, reject) => {
@@ -105,7 +107,9 @@ export async function resolveRequirements(
         toolingJreVersion = getRuntimeMajorVersion(filtered[filtered.length - 1])
       }
 
-      if (toolingJreVersion < requiredJdkVersion) {
+      // Eclipse JustJ does not publish Android/Bionic runtimes. Termux has a
+      // native OpenJDK package, which is discovered through JAVA_HOME or PATH.
+      if (toolingJreVersion < requiredJdkVersion && dependencies.platform !== 'android') {
         toolingJre = await dependencies.checkAndDownloadJRE(context)
         toolingJreVersion = await dependencies.getMajorVersion(toolingJre)
       }
@@ -116,7 +120,8 @@ export async function resolveRequirements(
     } else {
       openJDKDownload(
         reject,
-        `Java ${requiredJdkVersion} or more recent is required to run the Java extension. Please download and install a recent JDK. You can still compile your projects with older JDKs by configuring ['java.configuration.runtimes'](https://github.com/redhat-developer/vscode-java/wiki/JDK-Requirements#java.configuration.runtimes)`,
+        getMissingToolingJdkMessage(requiredJdkVersion, dependencies.platform),
+        dependencies.platform,
       )
     }
 
@@ -141,6 +146,7 @@ export async function resolveRequirements(
       openJDKDownload(
         reject,
         "Please download and install a JDK to compile your project. You can configure your projects with different JDKs by the setting ['java.configuration.runtimes'](https://github.com/redhat-developer/vscode-java/wiki/JDK-Requirements#java.configuration.runtimes)",
+        dependencies.platform,
       )
     }
 
@@ -168,6 +174,17 @@ export async function resolveRequirements(
     })
     /* eslint-enable @typescript-eslint/naming-convention */
   })
+}
+
+export function getMissingToolingJdkMessage(
+  requiredJdkVersion: number,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const message = `Java ${requiredJdkVersion} or more recent is required to run the Java extension. Please download and install a recent JDK. You can still compile your projects with older JDKs by configuring ['java.configuration.runtimes'](https://github.com/redhat-developer/vscode-java/wiki/JDK-Requirements#java.configuration.runtimes)`
+  if (platform === 'android' && requiredJdkVersion === 21) {
+    return `${message} In Termux, install the required JDK with \`pkg install openjdk-21\`.`
+  }
+  return message
 }
 
 function expand(input: string): string | undefined {
@@ -284,7 +301,11 @@ export function parseMajorVersion(version: string): number {
   return javaVersion
 }
 
-function openJDKDownload(reject, cause) {
+function openJDKDownload(reject, cause, platform: NodeJS.Platform = process.platform) {
+  if (platform === 'android') {
+    reject({ message: cause })
+    return
+  }
   const jdkUrl = getJdkUrl()
   reject({
     message: cause,

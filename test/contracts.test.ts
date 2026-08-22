@@ -10,11 +10,11 @@ import type { ExtensionAPI } from '../src/extension.api.ts'
 import { getJavaEncoding, getJavaServerMode, ServerMode } from '../src/settings.ts'
 import { getBuildFilePatterns, getJavaConfig } from '../src/utils.ts'
 import { createTypeBodySnippet } from '../src/fileEventHandler.ts'
-import { addAppCDSParams, addJavacParams, getJavaExecutable, getPredefinedVariablesEnv, getUnicodeLocaleEnv, prepareExecutable, prepareParams } from '../src/javaServerStarter.ts'
+import { addAppCDSParams, addJavacParams, getJavaExecutable, getPredefinedVariablesEnv, getServerConfigurationDirectory, getUnicodeLocaleEnv, prepareExecutable, prepareParams } from '../src/javaServerStarter.ts'
 import { sanitizeCommandLinksInHover } from '../src/hoverAction.ts'
 import { isCompatibleLombokVersion, parseLombokVersion, parseLombokVersionNumber } from '../src/lombokSupport.ts'
 import { isCompatibleRuntime } from '../src/javaRuntimes.ts'
-import { getRuntimeMajorVersion, isRuntimeVersionInRange, resolveRequirements, sortJdksByVersion } from '../src/requirements.ts'
+import { getMissingToolingJdkMessage, getRuntimeMajorVersion, isRuntimeVersionInRange, resolveRequirements, sortJdksByVersion } from '../src/requirements.ts'
 import { createExtendedOutlineNodes, extendedOutlineTree, ExtendedOutlineTreeDataProvider } from '../src/outline/extendedOutlineTree.ts'
 import { requestMoveWithConfirmation } from '../src/refactorAction.ts'
 import { showRequirementsError } from '../src/requirementsErrorHandler.ts'
@@ -237,6 +237,68 @@ describe('coc-java fast contracts', () => {
     assert.equal(requirements.tooling_jre_version, 23)
     assert.equal(requirements.java_home, javaHome)
     assert.equal(requirements.java_version, 23)
+  })
+
+  it('uses an installed Termux JDK and never attempts a bundled runtime download', async () => {
+    const javaHome = path.join(fixtureDirectory, 'termux', 'usr', 'lib', 'jvm', 'java-21-openjdk')
+    await fs.mkdir(path.join(javaHome, 'bin'), { recursive: true })
+    await fs.writeFile(path.join(javaHome, 'bin', 'javac'), '')
+    let downloadCalls = 0
+    const state = { get: () => undefined, update: async () => undefined }
+    const context = {
+      storagePath: path.join(fixtureDirectory, 'termux-requirements-storage'),
+      globalState: state,
+      workspaceState: state,
+    } as any
+
+    const requirements = await resolveRequirements(context, {
+      platform: 'android',
+      checkJavaPreferences: async () => undefined,
+      getRuntimeFromSettings: async () => [],
+      findRuntimes: async () => [{
+        homedir: javaHome,
+        version: { java_version: '21.0.12', major: 21 },
+      }],
+      checkAndDownloadJRE: async () => {
+        downloadCalls++
+        return '/unexpected/downloaded-jre'
+      },
+    })
+
+    assert.equal(downloadCalls, 0)
+    assert.equal(requirements.tooling_jre, javaHome)
+    assert.equal(requirements.java_home, javaHome)
+    assert.equal(getServerConfigurationDirectory(false, 'android'), 'config_linux')
+    assert.equal(getServerConfigurationDirectory(true, 'android'), 'config_ss_linux')
+  })
+
+  it('explains how to install the required JDK when Termux has none', async () => {
+    let downloadCalls = 0
+    const state = { get: () => undefined, update: async () => undefined }
+    const context = {
+      storagePath: path.join(fixtureDirectory, 'missing-termux-jdk-storage'),
+      globalState: state,
+      workspaceState: state,
+    } as any
+
+    await assert.rejects(resolveRequirements(context, {
+      platform: 'android',
+      checkJavaPreferences: async () => undefined,
+      getRuntimeFromSettings: async () => [],
+      findRuntimes: async () => [],
+      checkAndDownloadJRE: async () => {
+        downloadCalls++
+        return '/unexpected/downloaded-jre'
+      },
+    }), (error: any) => {
+      assert.match(error.message, /pkg install openjdk-21/)
+      assert.equal(error.label, undefined)
+      assert.equal(error.command, undefined)
+      return true
+    })
+
+    assert.equal(downloadCalls, 0)
+    assert.match(getMissingToolingJdkMessage(21, 'android'), /pkg install openjdk-21/)
   })
 
   it('resolves a Gradle multi-project build from its settings file', async () => {

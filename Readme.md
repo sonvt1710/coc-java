@@ -29,6 +29,10 @@ Provides Java &trade; language support via
 
 ## Setting the JDK
 
+On Termux, install the host JDK with `pkg install openjdk-21`. The bundled
+JustJ runtime is not available for Android/Bionic, so coc-java uses the JDK
+provided by Termux through `JAVA_HOME` or `PATH`.
+
 Now that Java extension will publish platform specific versions, it will embed a JRE for supported platforms such as `win32-x64`, `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`. The embedded JRE is used to launch the Language Server for Java. Users are only responsible for configuring [Project JDKs](#project-jdks) to compile your Java projects.
 
 The following part is only kept for the universal version without embedded JRE.

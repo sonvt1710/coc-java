@@ -101,6 +101,22 @@ export function getJavaExecutable(
   return path.resolve(javaHome, 'bin', executable)
 }
 
+/** Select the JDT LS configuration for the host that runs coc.nvim. */
+export function getServerConfigurationDirectory(
+  isSyntaxServer: boolean,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (platform === 'darwin') {
+    return isSyntaxServer ? 'config_ss_mac' : 'config_mac'
+  }
+  // Node reports `android` in Termux, while JDT LS uses its Linux
+  // configuration there (see eclipse.jdt.ls#3742).
+  if (platform === 'linux' || platform === 'android') {
+    return isSyntaxServer ? 'config_ss_linux' : 'config_linux'
+  }
+  return isSyntaxServer ? 'config_ss_win' : 'config_win'
+}
+
 /** Values understood by JDT LS when settings contain VS Code-style variables. */
 export function getPredefinedVariablesEnv(): Record<string, string> {
   const folderUri = workspace.workspaceFolders?.[0]?.uri
@@ -357,12 +373,7 @@ export function prepareParams(requirements: RequirementsData, workspacePath, con
   }
 
   // select configuration directory according to OS
-  let configDir = isSyntaxServer ? 'config_ss_win' : 'config_win'
-  if (process.platform === 'darwin') {
-    configDir = isSyntaxServer ? 'config_ss_mac' : 'config_mac'
-  } else if (process.platform === 'linux') {
-    configDir = isSyntaxServer ? 'config_ss_linux' : 'config_linux'
-  }
+  const configDir = getServerConfigurationDirectory(isSyntaxServer)
   params.push('-configuration')
   if (startedFromSources()) { // Dev Mode: keep the config.ini in the installation location
     console.log(`Starting jdt.ls ${isSyntaxServer ? '(syntax)' : '(standard)'} from vscode-java sources`)
